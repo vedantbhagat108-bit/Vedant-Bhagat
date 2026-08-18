@@ -82,7 +82,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
     resetToDefaults,
   } = usePortfolio();
 
-  const [emailInput, setEmailInput] = useState('vedantbhagat108@gmail.com');
+  const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
@@ -425,8 +425,8 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                 </h2>
                 <p className="text-xs text-slate-400 font-mono">
                   {isAdminLoggedIn
-                    ? `Logged in as Owner: ${adminEmail}`
-                    : 'Google Account Authorization Required (vedantbhagat108@gmail.com)'}
+                    ? 'Logged in as Verified Owner'
+                    : 'Owner Security Authorization Required'}
                 </p>
               </div>
             </div>
@@ -472,15 +472,14 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                 <div className="space-y-2">
                   <h3 className="text-lg font-bold text-white">Owner Authorization Required</h3>
                   <p className="text-xs text-slate-400 leading-relaxed">
-                    Customization is restricted exclusively to the portfolio owner&apos;s Google account (
-                    <strong className="text-cyan-300 font-mono">vedantbhagat108@gmail.com</strong>).
+                    Customization is restricted exclusively to the verified portfolio owner account.
                   </p>
                 </div>
 
                 <form onSubmit={handleOwnerAuth} className="space-y-4 text-left bg-slate-950/80 p-4 rounded-xl border border-slate-800">
                   <div>
                     <label className="block text-xs font-mono text-slate-400 mb-1">
-                      Owner Google Email Address
+                      Owner Google Account / Email
                     </label>
                     <div className="relative">
                       <input
@@ -489,7 +488,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                         onChange={(e) => setEmailInput(e.target.value)}
                         required
                         className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-cyan-400 font-mono"
-                        placeholder="vedantbhagat108@gmail.com"
+                        placeholder="Enter authorized owner email"
                       />
                       <UserCheck className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
                     </div>
@@ -517,7 +516,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                       </button>
                     </div>
                     <p className="text-[11px] text-slate-500 font-mono mt-1">
-                      Authorized owner password required (default: Ved@1285)
+                      Authorized owner password required to unlock settings
                     </p>
                   </div>
 
@@ -538,7 +537,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                 </form>
 
                 <p className="text-[11px] text-slate-500 font-mono">
-                  Verified Owner Email: <span className="text-slate-400">vedantbhagat108@gmail.com</span>
+                  Protected Owner Verification Portal
                 </p>
               </div>
             ) : (
