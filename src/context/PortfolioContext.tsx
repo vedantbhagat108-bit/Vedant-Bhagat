@@ -34,8 +34,6 @@ interface PortfolioContextType {
 
 const STORAGE_KEY = 'vedant_portfolio_custom_v2';
 const ADMIN_AUTH_KEY = 'vedant_portfolio_admin_auth';
-const OWNER_PASS_KEY = 'vedant_portfolio_owner_password';
-const DEFAULT_OWNER_PASS = 'Ved@1285';
 
 const defaultPortfolioData: PortfolioData = {
   personalInfo: PERSONAL_INFO,
@@ -106,14 +104,6 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [data]);
 
-  const getStoredPassword = (): string => {
-    try {
-      return localStorage.getItem(OWNER_PASS_KEY) || DEFAULT_OWNER_PASS;
-    } catch {
-      return DEFAULT_OWNER_PASS;
-    }
-  };
-
   const loginAsAdmin = async (email: string, password?: string): Promise<{ success: boolean; message: string }> => {
     const cleanEmail = email.trim().toLowerCase();
     
@@ -127,18 +117,10 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       };
     }
 
-    const expectedPass = getStoredPassword();
     if (!password) {
       return {
         success: false,
         message: 'Password required to log in as Owner.',
-      };
-    }
-
-    if (password !== expectedPass) {
-      return {
-        success: false,
-        message: 'Incorrect Owner Password.',
       };
     }
 
@@ -157,25 +139,18 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setAdminEmail('vedantbhagat108@gmail.com');
         sessionStorage.setItem(ADMIN_AUTH_KEY, 'true');
         localStorage.removeItem(ADMIN_AUTH_KEY);
-        return { success: true, message: 'Google Owner & Password Authentication Successful! Customization unlocked.' };
+        return { success: true, message: 'Owner Identity Verified. Admin Customization Enabled!' };
       } else {
-        return { success: false, message: resData.message || 'Authentication failed.' };
+        return { success: false, message: resData.message || 'Authentication failed. Please verify your owner password.' };
       }
     } catch (err: any) {
-      // Client-side fallback authentication for owner
-      setIsAdminLoggedIn(true);
-      setAdminEmail('vedantbhagat108@gmail.com');
-      sessionStorage.setItem(ADMIN_AUTH_KEY, 'true');
-      localStorage.removeItem(ADMIN_AUTH_KEY);
-      return { success: true, message: 'Owner Identity Verified. Admin Customization Enabled!' };
+      return { success: false, message: 'Server communication error. Could not verify owner credentials.' };
     }
   };
 
   const changeAdminPassword = async (currentPass: string, newPass: string): Promise<{ success: boolean; message: string }> => {
-    const activePass = getStoredPassword();
-
-    if (currentPass !== activePass) {
-      return { success: false, message: 'Current password does not match.' };
+    if (!currentPass) {
+      return { success: false, message: 'Current password is required.' };
     }
 
     if (!newPass || newPass.trim().length < 4) {
@@ -184,18 +159,20 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const cleanNewPass = newPass.trim();
     try {
-      localStorage.setItem(OWNER_PASS_KEY, cleanNewPass);
-      // Notify backend server as well
-      await fetch('/api/auth/change-password', {
+      const response = await fetch('/api/auth/change-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentPassword: currentPass, newPassword: cleanNewPass }),
       });
+      const resData = await response.json();
+      if (resData.success) {
+        return { success: true, message: 'Password successfully updated!' };
+      } else {
+        return { success: false, message: resData.message || 'Failed to update password.' };
+      }
     } catch (e) {
-      console.error('Failed to save updated password:', e);
+      return { success: false, message: 'Network error while attempting to update password.' };
     }
-
-    return { success: true, message: `Password successfully updated! Your new password is now active.` };
   };
 
   const logoutAdmin = () => {

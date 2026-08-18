@@ -132,8 +132,9 @@ Always respond enthusiastically, professionally, and concisely in a space/cosmic
     }
   });
 
-  // In-memory owner admin password (default: Ved@1285)
-  let ownerAdminPassword = process.env.OWNER_PASSWORD || 'Ved@1285';
+  // SENSITIVE CREDENTIAL: Read owner admin password strictly from environment variables
+  // Never expose plaintext passwords in repository code.
+  let ownerAdminPassword = process.env.OWNER_PASSWORD || process.env.ADMIN_PASSWORD || '';
 
   // Owner Authorization Check (Google Account & Password Security Check)
   app.post('/api/auth/verify-owner', (req, res) => {
@@ -154,8 +155,16 @@ Always respond enthusiastically, professionally, and concisely in a space/cosmic
       });
     }
 
-    // Verify Password if provided (or fallback if empty to check)
-    if (password && password !== ownerAdminPassword) {
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        authenticated: false,
+        message: 'Owner password is required.',
+      });
+    }
+
+    // If an environment password is configured, strictly enforce matching
+    if (ownerAdminPassword && password !== ownerAdminPassword) {
       return res.status(401).json({
         success: false,
         authenticated: false,
@@ -176,7 +185,7 @@ Always respond enthusiastically, professionally, and concisely in a space/cosmic
   app.post('/api/auth/change-password', (req, res) => {
     const { currentPassword, newPassword } = req.body || {};
 
-    if (!currentPassword || currentPassword !== ownerAdminPassword) {
+    if (ownerAdminPassword && (!currentPassword || currentPassword !== ownerAdminPassword)) {
       return res.status(400).json({
         success: false,
         message: 'Current password does not match.',
