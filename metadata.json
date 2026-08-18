@@ -1,0 +1,6 @@
+{
+  "name": "Vedant Bhagat - Space Portfolio",
+  "description": "Interactive space-themed 3D portfolio for Vedant Raju Bhagat, IT Undergraduate at DTU featuring an interactive Hero video vortex portal, LeetCode & GitHub stats, project showcases, and Cosmo AI companion.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
