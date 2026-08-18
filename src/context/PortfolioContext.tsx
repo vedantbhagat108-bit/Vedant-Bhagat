@@ -66,7 +66,10 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(() => {
     try {
-      const auth = localStorage.getItem(ADMIN_AUTH_KEY);
+      // Clear any legacy persistent localStorage session
+      localStorage.removeItem(ADMIN_AUTH_KEY);
+      // Use sessionStorage so session strictly terminates when the site/tab is closed
+      const auth = sessionStorage.getItem(ADMIN_AUTH_KEY);
       return auth === 'true';
     } catch (e) {
       return false;
@@ -74,8 +77,26 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   });
 
   const [adminEmail, setAdminEmail] = useState<string | null>(() => {
-    return isAdminLoggedIn ? 'vedantbhagat108@gmail.com' : null;
+    try {
+      return sessionStorage.getItem(ADMIN_AUTH_KEY) === 'true' ? 'vedantbhagat108@gmail.com' : null;
+    } catch {
+      return null;
+    }
   });
+
+  // Automatically ensure admin auth is terminated upon closing or navigating away from the page
+  useEffect(() => {
+    const handleClose = () => {
+      sessionStorage.removeItem(ADMIN_AUTH_KEY);
+      localStorage.removeItem(ADMIN_AUTH_KEY);
+    };
+    window.addEventListener('beforeunload', handleClose);
+    window.addEventListener('pagehide', handleClose);
+    return () => {
+      window.removeEventListener('beforeunload', handleClose);
+      window.removeEventListener('pagehide', handleClose);
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -134,7 +155,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (resData.success) {
         setIsAdminLoggedIn(true);
         setAdminEmail('vedantbhagat108@gmail.com');
-        localStorage.setItem(ADMIN_AUTH_KEY, 'true');
+        sessionStorage.setItem(ADMIN_AUTH_KEY, 'true');
+        localStorage.removeItem(ADMIN_AUTH_KEY);
         return { success: true, message: 'Google Owner & Password Authentication Successful! Customization unlocked.' };
       } else {
         return { success: false, message: resData.message || 'Authentication failed.' };
@@ -143,7 +165,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       // Client-side fallback authentication for owner
       setIsAdminLoggedIn(true);
       setAdminEmail('vedantbhagat108@gmail.com');
-      localStorage.setItem(ADMIN_AUTH_KEY, 'true');
+      sessionStorage.setItem(ADMIN_AUTH_KEY, 'true');
+      localStorage.removeItem(ADMIN_AUTH_KEY);
       return { success: true, message: 'Owner Identity Verified. Admin Customization Enabled!' };
     }
   };
@@ -178,6 +201,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const logoutAdmin = () => {
     setIsAdminLoggedIn(false);
     setAdminEmail(null);
+    sessionStorage.removeItem(ADMIN_AUTH_KEY);
     localStorage.removeItem(ADMIN_AUTH_KEY);
   };
 
