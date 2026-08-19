@@ -46,7 +46,18 @@ export const HeroVideoPortal: React.FC<HeroVideoPortalProps> = ({ onVortexTrigge
       if (url) {
         setVideoSrc(url);
       } else {
-        setVideoSrc(null);
+        // Check if user has /intro.mp4 in their public folder
+        fetch('/intro.mp4', { method: 'HEAD' })
+          .then((res) => {
+            if (res.ok && res.headers.get('content-type')?.includes('video')) {
+              setVideoSrc('/intro.mp4');
+            } else {
+              setVideoSrc(null);
+            }
+          })
+          .catch(() => {
+            setVideoSrc(null);
+          });
       }
     });
   };
@@ -273,6 +284,16 @@ export const HeroVideoPortal: React.FC<HeroVideoPortalProps> = ({ onVortexTrigge
               loop
               muted={isMuted}
               playsInline
+              preload="auto"
+              // @ts-ignore
+              webkit-playsinline="true"
+              x5-playsinline="true"
+              onError={() => {
+                console.warn('Video failed to load on this device, falling back to cosmic portal canvas.');
+                setVideoSrc(null);
+              }}
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
               className="w-full h-full object-contain md:object-cover pointer-events-none drop-shadow-[0_0_60px_rgba(56,189,248,0.3)]"
             />
           ) : (

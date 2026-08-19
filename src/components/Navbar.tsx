@@ -152,13 +152,13 @@ export const Navbar: React.FC<NavbarProps> = ({
         </a>
 
         {/* Desktop Navigation Links */}
-        <nav className="hidden lg:flex items-center gap-1 bg-slate-900/60 backdrop-blur-md px-4 py-1.5 rounded-full border border-slate-800/80 text-sm">
+        <nav className="hidden lg:flex items-center gap-1 bg-slate-900/60 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-slate-800/80 text-sm shrink-0">
           {navLinks.map((link) => (
             <a
               key={link.name}
               href={link.href}
               onClick={(e) => handleNavClick(e, link.href)}
-              className="px-3 py-1.5 text-slate-300 hover:text-cyan-400 hover:bg-slate-800/50 rounded-full transition-all text-xs font-medium tracking-wide"
+              className="px-3 py-1.5 text-slate-300 hover:text-cyan-400 hover:bg-slate-800/50 rounded-full transition-all text-xs font-medium tracking-wide whitespace-nowrap shrink-0"
             >
               {link.name}
             </a>
