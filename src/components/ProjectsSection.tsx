@@ -32,6 +32,37 @@ export const ProjectsSection: React.FC = () => {
   const [gameScore, setGameScore] = useState(0);
   const [gamePlaying, setGamePlaying] = useState(false);
 
+  // Framer motion variants for scroll entrance
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.2,
+        delayChildren: 0.1,
+      },
+    },
+  };
+
+  const cardVariants = {
+    hidden: {
+      opacity: 0,
+      y: 45,
+      scale: 0.96,
+    },
+    visible: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: {
+        type: 'spring',
+        damping: 24,
+        stiffness: 110,
+        mass: 0.8,
+      },
+    },
+  };
+
   const handleRunSummarizerDemo = () => {
     if (!youtubeUrl) return;
     playClickSound(700);
@@ -54,8 +85,14 @@ export const ProjectsSection: React.FC = () => {
     <section id="projects" className="py-24 relative z-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
-        <div className="text-center max-w-3xl mx-auto space-y-4 mb-16">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-500/40 text-cyan-300 text-xs font-mono">
+        <motion.div
+          initial={{ opacity: 0, y: 25 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.6, ease: 'easeOut' }}
+          className="text-center max-w-3xl mx-auto space-y-4 mb-16"
+        >
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-500/40 text-cyan-300 text-xs font-mono shadow-sm">
             <Code2 className="w-3.5 h-3.5 text-cyan-400" />
             <span>FEATURED WORK</span>
           </div>
@@ -65,18 +102,22 @@ export const ProjectsSection: React.FC = () => {
           <p className="text-slate-400 text-sm sm:text-base">
             Hands-on projects built with Python, Gemini AI, Streamlit, and Pygame. Includes interactive live engine preview demos.
           </p>
-        </div>
+        </motion.div>
 
         {/* Projects Cards Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {data.projects.map((project, idx) => (
+        <motion.div
+          variants={containerVariants}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.15 }}
+          className="grid grid-cols-1 lg:grid-cols-2 gap-8"
+        >
+          {data.projects.map((project) => (
             <motion.div
               key={project.id}
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: idx * 0.15 }}
-              className="bg-slate-900/80 border border-slate-800 hover:border-cyan-500/40 rounded-2xl p-6 sm:p-8 backdrop-blur-xl flex flex-col justify-between space-y-6 shadow-2xl relative overflow-hidden group transition-all"
+              variants={cardVariants}
+              whileHover={{ y: -6, transition: { duration: 0.25, ease: 'easeOut' } }}
+              className="bg-slate-900/80 border border-slate-800 hover:border-cyan-500/50 rounded-2xl p-6 sm:p-8 backdrop-blur-xl flex flex-col justify-between space-y-6 shadow-2xl relative overflow-hidden group transition-colors duration-300"
             >
               <div className="space-y-4">
                 {/* Header Tag */}
@@ -148,7 +189,7 @@ export const ProjectsSection: React.FC = () => {
               </div>
             </motion.div>
           ))}
-        </div>
+        </motion.div>
       </div>
 
       {/* Interactive Project Demo Modal */}

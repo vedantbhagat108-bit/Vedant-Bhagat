@@ -7,6 +7,24 @@ export interface LocalKnowledgeAnswer {
 
 const KNOWLEDGE_BASE: LocalKnowledgeAnswer[] = [
   {
+    keywords: ['shortcuts', 'shortcut', 'hotkey', 'hotkeys', 'keys', 'keybinding', 'keybindings', 'keyboard', 'warp shortcut', 'theme shortcut'],
+    response: `🚀 **Global Keyboard Shortcuts for Vedant's Portfolio:**
+
+You can press these keys anytime (outside input boxes) to trigger instant actions:
+
+- 🎨 **\`T\`** — **Toggle / Cycle Themes** (*Deep Space Cyan* → *Cyberpunk Neon* → *Solar Flare Gold* → *Monochrome Void*)
+- ⚡ **\`S\`** or **\`W\`** — **Toggle 3D Warp Speed** (accelerates starfield velocity)
+- ⌨️ **\`Ctrl + K\`** / **\`Cmd + K\`** or **\`/\`** — **Open Command Palette**
+- 🤖 **\`A\`** or **\`C\`** — **Ask Cosmo AI Assistant** (opens this drawer!)
+- 📄 **\`R\`** — **Open & Download Resume PDF**
+- 💻 **\`P\`** — **Jump to Academic Projects Section**
+- 🚀 **\`H\`** — **Jump to Hero Intro Section**
+- 🎓 **\`E\`** — **Jump to Education & Timeline**
+- 🎵 **\`M\`** — **Toggle Ambient Deep Space Audio**
+- 🛡️ **\`Shift + A\`** — **Open Portfolio Admin Control Panel**
+- 🧭 **\`1\` to \`5\`** — Quick jump to About (\`1\`), Skills (\`2\`), Certifications (\`3\`), LeetCode (\`4\`), Contact (\`5\`)`,
+  },
+  {
     keywords: ['cgpa', 'grade', 'marks', 'percentage', 'score', 'academics', 'dtu cgpa'],
     response: `**Vedant Raju Bhagat's Academic Records:**
 - **Degree:** B.Tech in Information Technology (2024–2028)

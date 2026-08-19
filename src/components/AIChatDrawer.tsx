@@ -15,7 +15,7 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({ isOpen, onClose }) =
     {
       id: '1',
       sender: 'bot',
-      text: "Greetings! I'm Cosmo, Vedant's AI Portfolio Assistant. Ask me anything about his B.Tech IT studies at DTU, YouTube Summarizer project, Pygame development, or 200+ LeetCode C++ solutions!",
+      text: "Greetings! I'm Cosmo, Vedant's AI Portfolio Assistant. Ask me anything about his B.Tech IT studies at DTU, projects, 200+ LeetCode solutions, or ask me for the portfolio's global keyboard shortcut keys!",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -30,8 +30,9 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({ isOpen, onClose }) =
   if (!isOpen) return null;
 
   const quickPrompts = [
+    'What keyboard shortcuts can I use?',
     'What is Vedant\'s CGPA at DTU?',
-    'Tell me about his YouTube Summarizer AI project.',
+    'Tell me about his YouTube Summarizer project.',
     'What are his C++ & LeetCode achievements?',
     'How can I contact Vedant?',
   ];
