@@ -13,7 +13,7 @@ import {
   Minimize2,
   ChevronDown,
 } from 'lucide-react';
-import { loadSavedVideo } from '../utils/videoStorage';
+import { resolveActiveHeroVideo } from '../utils/videoStorage';
 import { playClickSound } from '../utils/audio';
 import { usePortfolio } from '../context/PortfolioContext';
 
@@ -36,29 +36,8 @@ export const HeroVideoPortal: React.FC<HeroVideoPortalProps> = ({ onVortexTrigge
   const canvasPlaceholderRef = useRef<HTMLCanvasElement | null>(null);
 
   const loadVideo = () => {
-    const contextVideoUrl = data.personalInfo?.heroVideoUrl?.trim();
-    if (contextVideoUrl) {
-      setVideoSrc(contextVideoUrl);
-      return;
-    }
-
-    loadSavedVideo().then((url) => {
-      if (url) {
-        setVideoSrc(url);
-      } else {
-        // Check if user has /intro.mp4 in their public folder
-        fetch('/intro.mp4', { method: 'HEAD' })
-          .then((res) => {
-            if (res.ok && res.headers.get('content-type')?.includes('video')) {
-              setVideoSrc('/intro.mp4');
-            } else {
-              setVideoSrc(null);
-            }
-          })
-          .catch(() => {
-            setVideoSrc(null);
-          });
-      }
+    resolveActiveHeroVideo(data.personalInfo?.heroVideoUrl).then((resolvedUrl) => {
+      setVideoSrc(resolvedUrl);
     });
   };
 

@@ -15,7 +15,7 @@ import {
   Smartphone,
 } from 'lucide-react';
 import { usePortfolio } from '../context/PortfolioContext';
-import { loadSavedVideo } from '../utils/videoStorage';
+import { resolveActiveHeroVideo } from '../utils/videoStorage';
 import { playClickSound, playVortexSound, playEmergenceSound, startAmbientSpaceAudio } from '../utils/audio';
 import { scrollToElementFast } from '../utils/scroll';
 
@@ -56,31 +56,8 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
   const introY = useTransform(scrollYProgress, [0, 1], [0, 50]);
 
   const loadVideo = () => {
-    // 1. Check if configured in portfolio data (Cloud URL / Custom link)
-    const contextVideoUrl = data.personalInfo?.heroVideoUrl?.trim();
-    if (contextVideoUrl) {
-      setVideoSrc(contextVideoUrl);
-      return;
-    }
-
-    // 2. Check local browser indexedDB storage
-    loadSavedVideo().then((url) => {
-      if (url) {
-        setVideoSrc(url);
-      } else {
-        // 3. Fallback check for static /intro.mp4 in public directory
-        fetch('/intro.mp4', { method: 'HEAD' })
-          .then((res) => {
-            if (res.ok && res.headers.get('content-type')?.includes('video')) {
-              setVideoSrc('/intro.mp4');
-            } else {
-              setVideoSrc(null);
-            }
-          })
-          .catch(() => {
-            setVideoSrc(null);
-          });
-      }
+    resolveActiveHeroVideo(data.personalInfo?.heroVideoUrl).then((resolvedUrl) => {
+      setVideoSrc(resolvedUrl);
     });
   };
 

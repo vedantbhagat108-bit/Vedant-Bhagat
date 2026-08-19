@@ -48,7 +48,16 @@ import {
 import { usePortfolio } from '../context/PortfolioContext';
 import { SkillCategory, Certification } from '../types';
 import { playClickSound } from '../utils/audio';
-import { saveVideoFile, deleteSavedVideo } from '../utils/videoStorage';
+import {
+  saveVideoFile,
+  deleteSavedVideo,
+  loadSavedVideo,
+  loadSavedVideoMetadata,
+  detectProjectRepoVideo,
+  resolveActiveHeroVideo,
+  setVideoDisabledPreference,
+  isVideoDisabledPreference,
+} from '../utils/videoStorage';
 
 interface AdminModalProps {
   isOpen: boolean;
@@ -113,7 +122,33 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
   const [videoInputMode, setVideoInputMode] = useState<'url' | 'file'>('url');
   const [localVideoName, setLocalVideoName] = useState<string>('');
   const [localVideoPreviewUrl, setLocalVideoPreviewUrl] = useState<string>('');
+  const [detectedRepoVideo, setDetectedRepoVideo] = useState<string | null>(null);
+  const [activeResolvedVideo, setActiveResolvedVideo] = useState<string | null>(null);
+  const [isVideoDisabled, setIsVideoDisabled] = useState<boolean>(false);
   const [isUploadingVideo, setIsUploadingVideo] = useState<boolean>(false);
+
+  // Load existing saved video info on tab switch or open
+  React.useEffect(() => {
+    if (activeTab === 'video' || isOpen) {
+      loadSavedVideo().then((url) => {
+        if (url) {
+          setLocalVideoPreviewUrl(url);
+        }
+      });
+      loadSavedVideoMetadata().then((meta) => {
+        if (meta) {
+          setLocalVideoName(`${meta.name} (${(meta.size / (1024 * 1024)).toFixed(1)} MB)`);
+        }
+      });
+      detectProjectRepoVideo().then((repoVid) => {
+        setDetectedRepoVideo(repoVid);
+      });
+      resolveActiveHeroVideo(data.personalInfo?.heroVideoUrl).then((active) => {
+        setActiveResolvedVideo(active);
+      });
+      setIsVideoDisabled(isVideoDisabledPreference());
+    }
+  }, [activeTab, isOpen, data.personalInfo?.heroVideoUrl]);
 
   // Password Change Form State
   const [passForm, setPassForm] = useState({
@@ -1233,13 +1268,76 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                           <span>Hero Intro Video Management</span>
                         </h3>
                         <p className="text-xs text-slate-400 mt-0.5">
-                          Choose whether to provide an online video URL (recommended for all devices) or browse and upload a local file.
+                          Upload, customize, or replace the Hero background and Cinematic Intro video.
                         </p>
+                      </div>
+                    </div>
+
+                    {/* Active Video Status Banner */}
+                    <div className="p-3.5 bg-slate-900/90 border border-slate-700/80 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                          <Film className="w-3.5 h-3.5 text-sky-400" />
+                          <span>Currently Active Video:</span>
+                        </span>
+                        {activeResolvedVideo && !isVideoDisabled ? (
+                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 font-mono">
+                            <Check className="w-3 h-3 text-emerald-400" /> Video Active
+                          </span>
+                        ) : (
+                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1 font-mono">
+                            🪐 Cosmic Portal Mode
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="text-xs font-mono text-slate-200">
+                        {isVideoDisabled ? (
+                          <span className="text-slate-400">Video is currently turned off. Holographic Cosmic Portal active.</span>
+                        ) : activeResolvedVideo ? (
+                          <div className="flex flex-col gap-1">
+                            <span className="text-sky-300 font-semibold truncate">
+                              {localVideoName
+                                ? `📁 Custom Upload: ${localVideoName}`
+                                : data.personalInfo?.heroVideoUrl
+                                ? `🔗 Custom URL: ${data.personalInfo.heroVideoUrl}`
+                                : detectedRepoVideo
+                                ? `🐙 GitHub Repository Video: ${detectedRepoVideo}`
+                                : activeResolvedVideo}
+                            </span>
+                            {detectedRepoVideo && (localVideoName || data.personalInfo?.heroVideoUrl) && (
+                              <span className="text-[10px] text-slate-400">
+                                (Overriding GitHub repo file &ldquo;{detectedRepoVideo}&rdquo;)
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">No custom video or repo file detected. Cosmic canvas portal is active.</span>
+                        )}
                       </div>
                     </div>
 
                     {/* Mode Segmented Selector */}
                     <div className="grid grid-cols-2 gap-2 p-1 bg-slate-900/90 rounded-xl border border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playClickSound(700);
+                          setVideoInputMode('file');
+                        }}
+                        className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-mono font-medium transition-all ${
+                          videoInputMode === 'file'
+                            ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                        }`}
+                      >
+                        <FileVideo className="w-3.5 h-3.5" />
+                        <span>Upload / Replace File</span>
+                        <span className="hidden sm:inline-block text-[10px] px-1.5 py-0.2 rounded bg-slate-950/30 text-slate-900 font-bold">
+                          Local / PC
+                        </span>
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => {
@@ -1255,47 +1353,194 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                         <Link className="w-3.5 h-3.5" />
                         <span>Online Video URL</span>
                         <span className="hidden sm:inline-block text-[10px] px-1.5 py-0.2 rounded bg-slate-950/30 text-slate-900 font-bold">
-                          Global
-                        </span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          playClickSound(700);
-                          setVideoInputMode('file');
-                        }}
-                        className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-mono font-medium transition-all ${
-                          videoInputMode === 'file'
-                            ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
-                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-                        }`}
-                      >
-                        <FileVideo className="w-3.5 h-3.5" />
-                        <span>Browse Local File</span>
-                        <span className="hidden sm:inline-block text-[10px] px-1.5 py-0.2 rounded bg-slate-950/30 text-slate-900 font-bold">
-                          Upload
+                          Global Stream
                         </span>
                       </button>
                     </div>
 
-                    {/* Option 1: URL Mode */}
+                    {/* Option 1: Local File Browse / Replace Mode */}
+                    {videoInputMode === 'file' && (
+                      <div className="space-y-4">
+                        <div className="p-3.5 bg-slate-900/90 border border-sky-500/30 rounded-xl space-y-1 text-xs text-sky-200">
+                          <p className="font-semibold text-sky-300 flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                            <span>Replace Hero Video via File Upload:</span>
+                          </p>
+                          <p className="text-[11px] leading-relaxed text-slate-300">
+                            Browsing and selecting a video below immediately replaces the current video. To share your video globally across all devices, you can also place an MP4 in your GitHub repo at <code>/public/intro.mp4</code>.
+                          </p>
+                        </div>
+
+                        <div className="p-6 bg-slate-900/80 border border-dashed border-sky-500/40 hover:border-sky-400 rounded-2xl flex flex-col items-center justify-center text-center space-y-3 transition-colors">
+                          <input
+                            type="file"
+                            id="admin-video-file-input"
+                            accept="video/mp4,video/webm,video/ogg,video/quicktime"
+                            className="hidden"
+                            onChange={async (e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                const file = e.target.files[0];
+                                playClickSound(800);
+                                setIsUploadingVideo(true);
+                                const displayName = `${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)`;
+                                setLocalVideoName(displayName);
+
+                                try {
+                                  const preview = URL.createObjectURL(file);
+                                  setLocalVideoPreviewUrl(preview);
+                                  setActiveResolvedVideo(preview);
+                                  await saveVideoFile(file);
+                                  setVideoDisabledPreference(false);
+                                  setIsVideoDisabled(false);
+
+                                  // Clear conflicting URL so local video takes precedence
+                                  updatePortfolioData({
+                                    personalInfo: {
+                                      ...data.personalInfo,
+                                      heroVideoUrl: '',
+                                    },
+                                  });
+                                  setHeroVideoUrlInput('');
+                                  window.dispatchEvent(new Event('portfolio-video-updated'));
+                                  setAuthMsg({
+                                    type: 'success',
+                                    text: `Video replaced! "${file.name}" is now the active Hero video.`,
+                                  });
+                                } catch (err) {
+                                  setAuthMsg({ type: 'error', text: 'Failed to process local video file.' });
+                                } finally {
+                                  setIsUploadingVideo(false);
+                                }
+                              }
+                            }}
+                          />
+
+                          {localVideoPreviewUrl ? (
+                            <div className="w-full space-y-3">
+                              <div className="relative w-full max-h-56 rounded-xl overflow-hidden border border-slate-800 bg-black flex items-center justify-center">
+                                <video
+                                  src={localVideoPreviewUrl}
+                                  autoPlay
+                                  loop
+                                  muted
+                                  controls
+                                  playsInline
+                                  className="w-full max-h-56 object-contain"
+                                />
+                              </div>
+                              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs font-mono text-slate-300">
+                                <span className="text-emerald-400 font-bold truncate">
+                                  ✓ Active: {localVideoName || 'Uploaded Video'}
+                                </span>
+                                <label
+                                  htmlFor="admin-video-file-input"
+                                  className="px-3 py-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded-lg font-bold cursor-pointer transition-all"
+                                >
+                                  Replace with Another Video
+                                </label>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="w-14 h-14 rounded-2xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400 shadow-inner">
+                                <Upload className="w-7 h-7" />
+                              </div>
+                              <div className="space-y-1">
+                                <label
+                                  htmlFor="admin-video-file-input"
+                                  className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs font-mono rounded-xl cursor-pointer inline-flex items-center gap-2 transition-all shadow-md"
+                                >
+                                  <FileVideo className="w-4 h-4" />
+                                  <span>{isUploadingVideo ? 'Processing Video...' : 'Browse Video from PC / Phone'}</span>
+                                </label>
+                                <p className="text-[11px] text-slate-400">
+                                  Supports MP4, WebM, QuickTime MOV (replaces current video)
+                                </p>
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Action buttons for video deletion & reset */}
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {localVideoPreviewUrl && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                playClickSound(600);
+                                await deleteSavedVideo();
+                                setLocalVideoPreviewUrl('');
+                                setLocalVideoName('');
+                                window.dispatchEvent(new Event('portfolio-video-updated'));
+                                const newActive = await resolveActiveHeroVideo(data.personalInfo?.heroVideoUrl);
+                                setActiveResolvedVideo(newActive);
+                                setAuthMsg({
+                                  type: 'success',
+                                  text: detectedRepoVideo
+                                    ? `Custom video deleted. Reverted to GitHub repository video (${detectedRepoVideo}).`
+                                    : 'Custom video deleted. Reverted to default Cosmic Portal.',
+                                });
+                              }}
+                              className="flex-1 py-2.5 px-3 bg-slate-900 hover:bg-rose-950/80 border border-slate-800 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 text-xs font-mono rounded-xl transition-all flex items-center justify-center gap-2"
+                            >
+                              <Trash2 className="w-4 h-4 text-rose-400" />
+                              <span>Delete Uploaded Video</span>
+                            </button>
+                          )}
+
+                          {detectedRepoVideo && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                playClickSound(700);
+                                await deleteSavedVideo();
+                                setLocalVideoPreviewUrl('');
+                                setLocalVideoName('');
+                                setVideoDisabledPreference(false);
+                                setIsVideoDisabled(false);
+                                updatePortfolioData({
+                                  personalInfo: {
+                                    ...data.personalInfo,
+                                    heroVideoUrl: '',
+                                  },
+                                });
+                                setHeroVideoUrlInput('');
+                                window.dispatchEvent(new Event('portfolio-video-updated'));
+                                setActiveResolvedVideo(detectedRepoVideo);
+                                setAuthMsg({
+                                  type: 'success',
+                                  text: `Active video reset to GitHub repository file (${detectedRepoVideo})!`,
+                                });
+                              }}
+                              className="py-2.5 px-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-300 text-xs font-mono rounded-xl transition-all flex items-center justify-center gap-1.5"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>Reset to GitHub Repo Video</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Option 2: URL Mode */}
                     {videoInputMode === 'url' && (
                       <div className="space-y-4">
                         <div className="p-3.5 bg-sky-950/30 border border-sky-500/30 rounded-xl space-y-1 text-xs text-sky-200">
                           <p className="font-semibold text-sky-300 flex items-center gap-1.5">
                             <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-                            <span>Why Video URL is Best for Cross-Device Viewing:</span>
+                            <span>Online Video URL (Cloudinary / GitHub / S3):</span>
                           </p>
                           <p className="text-[11px] leading-relaxed text-sky-200/80">
-                            A direct video link streams immediately to any phone, laptop, or visitor viewing your portfolio on Vercel. Paste a direct link below or select one of the cosmic presets.
+                            A direct video link streams immediately to any phone, laptop, or visitor viewing your portfolio on Vercel.
                           </p>
                         </div>
 
                         <form
-                          onSubmit={(e) => {
+                          onSubmit={async (e) => {
                             e.preventDefault();
                             playClickSound(800);
+                            setVideoDisabledPreference(false);
+                            setIsVideoDisabled(false);
                             updatePortfolioData({
                               personalInfo: {
                                 ...data.personalInfo,
@@ -1303,6 +1548,8 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                               },
                             });
                             window.dispatchEvent(new Event('portfolio-video-updated'));
+                            const active = await resolveActiveHeroVideo(heroVideoUrlInput.trim());
+                            setActiveResolvedVideo(active);
                             setAuthMsg({
                               type: 'success',
                               text: heroVideoUrlInput.trim()
@@ -1314,7 +1561,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                         >
                           <div>
                             <label className="block text-xs font-mono text-slate-300 font-medium mb-1.5">
-                              Direct Video Stream URL (.mp4 / .webm / .mov / Cloudinary / GitHub / S3)
+                              Direct Video Stream URL (.mp4 / .webm / .mov / Cloudinary / GitHub raw / S3)
                             </label>
                             <input
                               type="url"
@@ -1325,12 +1572,24 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                             />
                           </div>
 
-                          {/* Quick Cosmic Presets */}
+                          {/* Quick Presets */}
                           <div className="space-y-1.5">
                             <span className="text-[11px] font-mono text-slate-400 block">
-                              Or click a sample stream preset to test:
+                              Or select a preset video:
                             </span>
                             <div className="flex flex-wrap gap-2">
+                              {detectedRepoVideo && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    playClickSound(650);
+                                    setHeroVideoUrlInput(detectedRepoVideo);
+                                  }}
+                                  className="px-2.5 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/40 rounded-lg text-[11px] text-cyan-300 font-mono transition-all flex items-center gap-1"
+                                >
+                                  🐙 GitHub Repo Video ({detectedRepoVideo})
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1350,16 +1609,6 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                                 className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-sky-500/40 rounded-lg text-[11px] text-slate-300 font-mono transition-all"
                               >
                                 🪐 Cosmic Nebula
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  playClickSound(650);
-                                  setHeroVideoUrlInput('/intro.mp4');
-                                }}
-                                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-sky-500/40 rounded-lg text-[11px] text-slate-300 font-mono transition-all"
-                              >
-                                📁 Local Static /intro.mp4
                               </button>
                             </div>
                           </div>
@@ -1404,7 +1653,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                             {heroVideoUrlInput && (
                               <button
                                 type="button"
-                                onClick={() => {
+                                onClick={async () => {
                                   setHeroVideoUrlInput('');
                                   updatePortfolioData({
                                     personalInfo: {
@@ -1413,7 +1662,9 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                                     },
                                   });
                                   window.dispatchEvent(new Event('portfolio-video-updated'));
-                                  setAuthMsg({ type: 'success', text: 'Video URL cleared. Returned to default cosmic portal.' });
+                                  const active = await resolveActiveHeroVideo('');
+                                  setActiveResolvedVideo(active);
+                                  setAuthMsg({ type: 'success', text: 'Video URL cleared.' });
                                 }}
                                 className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono rounded-xl transition-all"
                               >
@@ -1422,122 +1673,6 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                             )}
                           </div>
                         </form>
-                      </div>
-                    )}
-
-                    {/* Option 2: Local File Browse Mode */}
-                    {videoInputMode === 'file' && (
-                      <div className="space-y-4">
-                        <div className="p-3.5 bg-amber-950/30 border border-amber-500/30 rounded-xl space-y-1 text-xs text-amber-200">
-                          <p className="font-semibold text-amber-300 flex items-center gap-1.5">
-                            <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
-                            <span>Local Device Storage Notice:</span>
-                          </p>
-                          <p className="text-[11px] leading-relaxed text-amber-200/80">
-                            Files browsed directly from your computer or phone are stored in this browser&apos;s local memory. To share your video with everyone globally across all devices, use <strong>Option 1 (Video URL)</strong> or place the file in the project folder at <code>/public/intro.mp4</code>.
-                          </p>
-                        </div>
-
-                        <div className="p-6 bg-slate-900/80 border border-dashed border-sky-500/40 hover:border-sky-400 rounded-2xl flex flex-col items-center justify-center text-center space-y-3 transition-colors">
-                          <input
-                            type="file"
-                            id="admin-video-file-input"
-                            accept="video/mp4,video/webm,video/ogg,video/quicktime"
-                            className="hidden"
-                            onChange={async (e) => {
-                              if (e.target.files && e.target.files[0]) {
-                                const file = e.target.files[0];
-                                playClickSound(800);
-                                setIsUploadingVideo(true);
-                                setLocalVideoName(`${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)`);
-                                
-                                try {
-                                  const preview = URL.createObjectURL(file);
-                                  setLocalVideoPreviewUrl(preview);
-                                  await saveVideoFile(file);
-                                  // Clear conflicting URL so local video displays
-                                  updatePortfolioData({
-                                    personalInfo: {
-                                      ...data.personalInfo,
-                                      heroVideoUrl: '',
-                                    },
-                                  });
-                                  window.dispatchEvent(new Event('portfolio-video-updated'));
-                                  setAuthMsg({
-                                    type: 'success',
-                                    text: `Saved "${file.name}" to browser video storage! It will now play on this device.`,
-                                  });
-                                } catch (err) {
-                                  setAuthMsg({ type: 'error', text: 'Failed to process local video file.' });
-                                } finally {
-                                  setIsUploadingVideo(false);
-                                }
-                              }
-                            }}
-                          />
-
-                          {localVideoPreviewUrl ? (
-                            <div className="w-full space-y-3">
-                              <div className="relative w-full max-h-56 rounded-xl overflow-hidden border border-slate-800 bg-black flex items-center justify-center">
-                                <video
-                                  src={localVideoPreviewUrl}
-                                  autoPlay
-                                  loop
-                                  muted
-                                  controls
-                                  playsInline
-                                  className="w-full max-h-56 object-contain"
-                                />
-                              </div>
-                              <div className="flex items-center justify-between text-xs font-mono text-slate-300">
-                                <span>{localVideoName || 'Uploaded Video'}</span>
-                                <label
-                                  htmlFor="admin-video-file-input"
-                                  className="text-sky-400 hover:text-sky-300 font-bold cursor-pointer underline"
-                                >
-                                  Choose Different File
-                                </label>
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="w-14 h-14 rounded-2xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400 shadow-inner">
-                                <Upload className="w-7 h-7" />
-                              </div>
-                              <div className="space-y-1">
-                                <label
-                                  htmlFor="admin-video-file-input"
-                                  className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs font-mono rounded-xl cursor-pointer inline-flex items-center gap-2 transition-all shadow-md"
-                                >
-                                  <FileVideo className="w-4 h-4" />
-                                  <span>Browse Video from PC / Phone</span>
-                                </label>
-                                <p className="text-[11px] text-slate-400">
-                                  Supports MP4, WebM, QuickTime MOV (up to 100MB)
-                                </p>
-                              </div>
-                            </>
-                          )}
-                        </div>
-
-                        {/* Actions for local file */}
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              playClickSound(600);
-                              await deleteSavedVideo();
-                              setLocalVideoPreviewUrl('');
-                              setLocalVideoName('');
-                              window.dispatchEvent(new Event('portfolio-video-updated'));
-                              setAuthMsg({ type: 'success', text: 'Local browser video removed.' });
-                            }}
-                            className="flex-1 py-2.5 bg-slate-900 hover:bg-rose-950/80 border border-slate-800 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 text-xs font-mono rounded-xl transition-all flex items-center justify-center gap-2"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            <span>Remove Local Video</span>
-                          </button>
-                        </div>
                       </div>
                     )}
                   </div>
