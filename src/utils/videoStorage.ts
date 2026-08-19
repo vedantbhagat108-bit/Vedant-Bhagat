@@ -148,13 +148,21 @@ const PROJECT_VIDEO_CANDIDATES = [
   '/intro.mp4',
   '/video.mp4',
   '/hero.mp4',
+  '/hero-video.mp4',
   '/cinematic.mp4',
+  '/cinematic-intro.mp4',
   '/portfolio.mp4',
   '/vedant.mp4',
+  '/vedant-bhagat.mp4',
+  '/bg.mp4',
+  '/background.mp4',
   '/assets/intro.mp4',
   '/assets/video.mp4',
   '/assets/hero.mp4',
   '/assets/cinematic.mp4',
+  '/intro.webm',
+  '/video.webm',
+  '/hero.webm',
 ];
 
 /**

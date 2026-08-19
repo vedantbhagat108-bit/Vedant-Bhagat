@@ -119,13 +119,14 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
   const [skillsList, setSkillsList] = useState<SkillCategory[]>(data.skillCategories || []);
   const [certificationsList, setCertificationsList] = useState<Certification[]>(data.certifications || []);
   const [heroVideoUrlInput, setHeroVideoUrlInput] = useState(data.personalInfo.heroVideoUrl || '');
-  const [videoInputMode, setVideoInputMode] = useState<'url' | 'file'>('url');
+  const [videoInputMode, setVideoInputMode] = useState<'file' | 'url' | 'github'>('file');
   const [localVideoName, setLocalVideoName] = useState<string>('');
   const [localVideoPreviewUrl, setLocalVideoPreviewUrl] = useState<string>('');
   const [detectedRepoVideo, setDetectedRepoVideo] = useState<string | null>(null);
   const [activeResolvedVideo, setActiveResolvedVideo] = useState<string | null>(null);
   const [isVideoDisabled, setIsVideoDisabled] = useState<boolean>(false);
   const [isUploadingVideo, setIsUploadingVideo] = useState<boolean>(false);
+  const [isScanningRepo, setIsScanningRepo] = useState<boolean>(false);
 
   // Load existing saved video info on tab switch or open
   React.useEffect(() => {
@@ -1318,24 +1319,21 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                     </div>
 
                     {/* Mode Segmented Selector */}
-                    <div className="grid grid-cols-2 gap-2 p-1 bg-slate-900/90 rounded-xl border border-slate-800">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-1 bg-slate-900/90 rounded-xl border border-slate-800">
                       <button
                         type="button"
                         onClick={() => {
                           playClickSound(700);
                           setVideoInputMode('file');
                         }}
-                        className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-mono font-medium transition-all ${
+                        className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-mono font-medium transition-all ${
                           videoInputMode === 'file'
                             ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                         }`}
                       >
                         <FileVideo className="w-3.5 h-3.5" />
-                        <span>Upload / Replace File</span>
-                        <span className="hidden sm:inline-block text-[10px] px-1.5 py-0.2 rounded bg-slate-950/30 text-slate-900 font-bold">
-                          Local / PC
-                        </span>
+                        <span>1. Local File</span>
                       </button>
 
                       <button
@@ -1344,17 +1342,30 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                           playClickSound(700);
                           setVideoInputMode('url');
                         }}
-                        className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-mono font-medium transition-all ${
+                        className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-mono font-medium transition-all ${
                           videoInputMode === 'url'
                             ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                         }`}
                       >
                         <Link className="w-3.5 h-3.5" />
-                        <span>Online Video URL</span>
-                        <span className="hidden sm:inline-block text-[10px] px-1.5 py-0.2 rounded bg-slate-950/30 text-slate-900 font-bold">
-                          Global Stream
-                        </span>
+                        <span>2. Global Video URL</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playClickSound(700);
+                          setVideoInputMode('github');
+                        }}
+                        className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-mono font-medium transition-all ${
+                          videoInputMode === 'github'
+                            ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                        }`}
+                      >
+                        <GitBranch className="w-3.5 h-3.5" />
+                        <span>3. GitHub Repo Sync</span>
                       </button>
                     </div>
 
@@ -1673,6 +1684,136 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                             )}
                           </div>
                         </form>
+                      </div>
+                    )}
+
+                    {/* Option 3: GitHub & Vercel Sync Guide */}
+                    {videoInputMode === 'github' && (
+                      <div className="space-y-4">
+                        <div className="p-3.5 bg-cyan-950/30 border border-cyan-500/30 rounded-xl space-y-1 text-xs text-cyan-200">
+                          <p className="font-semibold text-cyan-300 flex items-center gap-1.5">
+                            <GitBranch className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>How Multi-Device & Vercel Syncing Works:</span>
+                          </p>
+                          <p className="text-[11px] leading-relaxed text-cyan-200/80">
+                            When you browse a file from your PC (Mode 1), your browser stores it only on that one device. To make your video load automatically on every phone, laptop, and visitor on Vercel, place the MP4 file in your GitHub repository inside the <code>public/</code> folder.
+                          </p>
+                        </div>
+
+                        {/* Scanner / Status Card */}
+                        <div className="p-4 bg-slate-900/90 border border-slate-700/80 rounded-xl space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-mono text-slate-300 font-semibold flex items-center gap-2">
+                              <Sparkles className="w-4 h-4 text-sky-400" />
+                              <span>Vercel Repository Video Status</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                playClickSound(750);
+                                setIsScanningRepo(true);
+                                const found = await detectProjectRepoVideo();
+                                setDetectedRepoVideo(found);
+                                const active = await resolveActiveHeroVideo(data.personalInfo?.heroVideoUrl);
+                                setActiveResolvedVideo(active);
+                                setIsScanningRepo(false);
+                                if (found) {
+                                  setAuthMsg({
+                                    type: 'success',
+                                    text: `Detected repository video at "${found}"! It is active for all devices.`,
+                                  });
+                                } else {
+                                  setAuthMsg({
+                                    type: 'info',
+                                    text: 'No repo video found at /public/intro.mp4 yet. Follow the 3 steps below.',
+                                  });
+                                }
+                              }}
+                              disabled={isScanningRepo}
+                              className="px-3 py-1.5 bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-300 text-[11px] font-mono rounded-lg transition-all flex items-center gap-1.5"
+                            >
+                              <RotateCcw className={`w-3 h-3 ${isScanningRepo ? 'animate-spin' : ''}`} />
+                              <span>{isScanningRepo ? 'Scanning...' : 'Check Vercel Deployment'}</span>
+                            </button>
+                          </div>
+
+                          {detectedRepoVideo ? (
+                            <div className="p-3 bg-emerald-950/30 border border-emerald-500/30 rounded-lg space-y-2">
+                              <div className="flex items-center gap-2 text-xs font-mono text-emerald-300 font-bold">
+                                <Check className="w-4 h-4 text-emerald-400" />
+                                <span>Deployed File Found: {detectedRepoVideo}</span>
+                              </div>
+                              <p className="text-[11px] text-emerald-200/80 leading-relaxed">
+                                This video is compiled into your Vercel build and plays globally across all devices!
+                              </p>
+                              <div className="relative w-full max-h-44 rounded-lg overflow-hidden border border-slate-800 bg-black flex items-center justify-center">
+                                <video
+                                  src={detectedRepoVideo}
+                                  autoPlay
+                                  loop
+                                  muted
+                                  playsInline
+                                  controls
+                                  className="w-full max-h-44 object-contain"
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-lg space-y-1 text-xs text-slate-400">
+                              <span className="text-amber-300 font-semibold block">⚠️ No Video File in /public yet</span>
+                              <span>
+                                Vercel currently does not have an MP4 in the public directory. Follow the steps below to add it.
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 3 Step Deployment Guide */}
+                        <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl space-y-3">
+                          <h4 className="text-xs font-mono font-bold text-white uppercase tracking-wider">
+                            3-Step Guide to Add Video to GitHub &amp; Vercel:
+                          </h4>
+
+                          <div className="space-y-2.5 text-xs text-slate-300 font-mono">
+                            <div className="flex items-start gap-2.5">
+                              <span className="w-5 h-5 rounded-full bg-sky-500 text-slate-950 text-[11px] font-bold flex items-center justify-center shrink-0">
+                                1
+                              </span>
+                              <div>
+                                <span className="text-white font-semibold">Copy Video into Public Folder</span>
+                                <p className="text-[11px] text-slate-400 mt-0.5">
+                                  Place your video inside the <code>public/</code> folder and name it <code>intro.mp4</code> (e.g. <code>public/intro.mp4</code>).
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-start gap-2.5">
+                              <span className="w-5 h-5 rounded-full bg-sky-500 text-slate-950 text-[11px] font-bold flex items-center justify-center shrink-0">
+                                2
+                              </span>
+                              <div className="w-full">
+                                <span className="text-white font-semibold">Commit &amp; Push to GitHub</span>
+                                <div className="mt-1 p-2 bg-black/60 rounded-lg border border-slate-800 text-[11px] text-sky-300 select-all font-mono">
+                                  git add public/intro.mp4<br />
+                                  git commit -m &quot;Add hero intro video&quot;<br />
+                                  git push
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-start gap-2.5">
+                              <span className="w-5 h-5 rounded-full bg-sky-500 text-slate-950 text-[11px] font-bold flex items-center justify-center shrink-0">
+                                3
+                              </span>
+                              <div>
+                                <span className="text-white font-semibold">Vercel Auto-Deploys</span>
+                                <p className="text-[11px] text-slate-400 mt-0.5">
+                                  Vercel will rebuild automatically in ~30 seconds. Your video will immediately stream to every visitor on mobile, desktop, and tablet.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
