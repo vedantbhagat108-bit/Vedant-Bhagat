@@ -39,6 +39,11 @@ import {
   ExternalLink,
   Calendar,
   FileCheck,
+  Link,
+  FileVideo,
+  Play,
+  Pause,
+  Check,
 } from 'lucide-react';
 import { usePortfolio } from '../context/PortfolioContext';
 import { SkillCategory, Certification } from '../types';
@@ -105,6 +110,10 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
   const [skillsList, setSkillsList] = useState<SkillCategory[]>(data.skillCategories || []);
   const [certificationsList, setCertificationsList] = useState<Certification[]>(data.certifications || []);
   const [heroVideoUrlInput, setHeroVideoUrlInput] = useState(data.personalInfo.heroVideoUrl || '');
+  const [videoInputMode, setVideoInputMode] = useState<'url' | 'file'>('url');
+  const [localVideoName, setLocalVideoName] = useState<string>('');
+  const [localVideoPreviewUrl, setLocalVideoPreviewUrl] = useState<string>('');
+  const [isUploadingVideo, setIsUploadingVideo] = useState<boolean>(false);
 
   // Password Change Form State
   const [passForm, setPassForm] = useState({
@@ -1216,139 +1225,321 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
 
                 {/* Tab 6: Hero Video Management */}
                 {activeTab === 'video' && (
-                  <div className="space-y-5 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                        <Film className="w-4 h-4 text-sky-400" />
-                        <span>Hero Intro Video Management</span>
-                      </h3>
-                    </div>
-
-                    <div className="p-3 bg-sky-950/40 border border-sky-500/30 rounded-xl space-y-1.5 text-xs text-sky-200">
-                      <p className="font-semibold text-white flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-                        <span>How to make video show on ALL devices (Mobile, Laptop, Vercel):</span>
-                      </p>
-                      <p className="text-[11px] leading-relaxed text-sky-200/90">
-                        Local file uploads only stay inside your current browser&apos;s memory. To make your video visible to <strong>anyone opening your portfolio on any phone, tablet, or PC</strong>, paste a public direct video link (e.g. from Cloudinary, Imgur, Supabase, GitHub raw MP4, or public MP4/WEBM URL) below.
-                      </p>
-                    </div>
-
-                    {/* Method A: Public Global Video URL */}
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        playClickSound(800);
-                        updatePortfolioData({
-                          personalInfo: {
-                            ...data.personalInfo,
-                            heroVideoUrl: heroVideoUrlInput.trim(),
-                          },
-                        });
-                        window.dispatchEvent(new Event('portfolio-video-updated'));
-                        setAuthMsg({
-                          type: 'success',
-                          text: heroVideoUrlInput.trim()
-                            ? 'Global Video URL saved! Video will now stream on all devices.'
-                            : 'Global Video URL cleared.',
-                        });
-                      }}
-                      className="p-4 bg-slate-900/80 rounded-xl border border-slate-700 space-y-3"
-                    >
-                      <div className="flex items-center justify-between">
-                        <label className="block text-xs font-mono text-cyan-300 font-bold">
-                          Option 1: Direct Video Stream URL (Recommended for All Devices)
-                        </label>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <input
-                          type="url"
-                          placeholder="https://res.cloudinary.com/.../video.mp4 or https://raw.githubusercontent.com/.../intro.mp4"
-                          value={heroVideoUrlInput}
-                          onChange={(e) => setHeroVideoUrlInput(e.target.value)}
-                          className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-sky-400 font-mono"
-                        />
-                        <p className="text-[11px] text-slate-400">
-                          Supports direct MP4, WebM, Cloudinary, GitHub raw video links, or AWS S3 links.
+                  <div className="space-y-5 bg-slate-950/60 p-4 sm:p-5 rounded-2xl border border-slate-800">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                          <Film className="w-4 h-4 text-sky-400" />
+                          <span>Hero Intro Video Management</span>
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          Choose whether to provide an online video URL (recommended for all devices) or browse and upload a local file.
                         </p>
                       </div>
+                    </div>
 
-                      <div className="flex gap-2">
-                        <button
-                          type="submit"
-                          className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs font-mono rounded-xl transition-all shadow-md shadow-sky-950/40"
+                    {/* Mode Segmented Selector */}
+                    <div className="grid grid-cols-2 gap-2 p-1 bg-slate-900/90 rounded-xl border border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playClickSound(700);
+                          setVideoInputMode('url');
+                        }}
+                        className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-mono font-medium transition-all ${
+                          videoInputMode === 'url'
+                            ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                        }`}
+                      >
+                        <Link className="w-3.5 h-3.5" />
+                        <span>Online Video URL</span>
+                        <span className="hidden sm:inline-block text-[10px] px-1.5 py-0.2 rounded bg-slate-950/30 text-slate-900 font-bold">
+                          Global
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playClickSound(700);
+                          setVideoInputMode('file');
+                        }}
+                        className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-mono font-medium transition-all ${
+                          videoInputMode === 'file'
+                            ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                        }`}
+                      >
+                        <FileVideo className="w-3.5 h-3.5" />
+                        <span>Browse Local File</span>
+                        <span className="hidden sm:inline-block text-[10px] px-1.5 py-0.2 rounded bg-slate-950/30 text-slate-900 font-bold">
+                          Upload
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Option 1: URL Mode */}
+                    {videoInputMode === 'url' && (
+                      <div className="space-y-4">
+                        <div className="p-3.5 bg-sky-950/30 border border-sky-500/30 rounded-xl space-y-1 text-xs text-sky-200">
+                          <p className="font-semibold text-sky-300 flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                            <span>Why Video URL is Best for Cross-Device Viewing:</span>
+                          </p>
+                          <p className="text-[11px] leading-relaxed text-sky-200/80">
+                            A direct video link streams immediately to any phone, laptop, or visitor viewing your portfolio on Vercel. Paste a direct link below or select one of the cosmic presets.
+                          </p>
+                        </div>
+
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            playClickSound(800);
+                            updatePortfolioData({
+                              personalInfo: {
+                                ...data.personalInfo,
+                                heroVideoUrl: heroVideoUrlInput.trim(),
+                              },
+                            });
+                            window.dispatchEvent(new Event('portfolio-video-updated'));
+                            setAuthMsg({
+                              type: 'success',
+                              text: heroVideoUrlInput.trim()
+                                ? 'Global Video URL saved! Video is now active across all devices.'
+                                : 'Global Video URL cleared.',
+                            });
+                          }}
+                          className="space-y-3.5"
                         >
-                          Save Global Video URL
-                        </button>
-                        {heroVideoUrlInput && (
+                          <div>
+                            <label className="block text-xs font-mono text-slate-300 font-medium mb-1.5">
+                              Direct Video Stream URL (.mp4 / .webm / .mov / Cloudinary / GitHub / S3)
+                            </label>
+                            <input
+                              type="url"
+                              placeholder="https://res.cloudinary.com/.../intro.mp4 or https://raw.githubusercontent.com/.../intro.mp4"
+                              value={heroVideoUrlInput}
+                              onChange={(e) => setHeroVideoUrlInput(e.target.value)}
+                              className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-sky-400 font-mono"
+                            />
+                          </div>
+
+                          {/* Quick Cosmic Presets */}
+                          <div className="space-y-1.5">
+                            <span className="text-[11px] font-mono text-slate-400 block">
+                              Or click a sample stream preset to test:
+                            </span>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  playClickSound(650);
+                                  setHeroVideoUrlInput('https://assets.mixkit.co/videos/preview/mixkit-stars-in-space-1610-large.mp4');
+                                }}
+                                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-sky-500/40 rounded-lg text-[11px] text-slate-300 font-mono transition-all"
+                              >
+                                🌌 Deep Space Stars
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  playClickSound(650);
+                                  setHeroVideoUrlInput('https://assets.mixkit.co/videos/preview/mixkit-nebula-in-deep-space-3178-large.mp4');
+                                }}
+                                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-sky-500/40 rounded-lg text-[11px] text-slate-300 font-mono transition-all"
+                              >
+                                🪐 Cosmic Nebula
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  playClickSound(650);
+                                  setHeroVideoUrlInput('/intro.mp4');
+                                }}
+                                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-sky-500/40 rounded-lg text-[11px] text-slate-300 font-mono transition-all"
+                              >
+                                📁 Local Static /intro.mp4
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Live Video Preview Box if URL entered */}
+                          {heroVideoUrlInput && (
+                            <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-700 space-y-2">
+                              <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
+                                <span>Live URL Stream Test:</span>
+                                <span className="text-emerald-400 flex items-center gap-1">
+                                  <Check className="w-3 h-3" /> Ready
+                                </span>
+                              </div>
+                              <div className="relative w-full max-h-52 rounded-lg overflow-hidden border border-slate-800 bg-black flex items-center justify-center">
+                                <video
+                                  src={heroVideoUrlInput}
+                                  autoPlay
+                                  loop
+                                  muted
+                                  playsInline
+                                  controls
+                                  className="w-full max-h-52 object-contain"
+                                  onError={() => {
+                                    setAuthMsg({
+                                      type: 'error',
+                                      text: 'Warning: This video URL could not be loaded or is blocked by CORS. Please check the link.',
+                                    });
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="submit"
+                              className="flex-1 py-2.5 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs font-mono rounded-xl transition-all shadow-lg shadow-sky-950/40 flex items-center justify-center gap-2"
+                            >
+                              <Save className="w-4 h-4" />
+                              <span>Save Video URL to Portfolio</span>
+                            </button>
+                            {heroVideoUrlInput && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setHeroVideoUrlInput('');
+                                  updatePortfolioData({
+                                    personalInfo: {
+                                      ...data.personalInfo,
+                                      heroVideoUrl: '',
+                                    },
+                                  });
+                                  window.dispatchEvent(new Event('portfolio-video-updated'));
+                                  setAuthMsg({ type: 'success', text: 'Video URL cleared. Returned to default cosmic portal.' });
+                                }}
+                                className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono rounded-xl transition-all"
+                              >
+                                Clear URL
+                              </button>
+                            )}
+                          </div>
+                        </form>
+                      </div>
+                    )}
+
+                    {/* Option 2: Local File Browse Mode */}
+                    {videoInputMode === 'file' && (
+                      <div className="space-y-4">
+                        <div className="p-3.5 bg-amber-950/30 border border-amber-500/30 rounded-xl space-y-1 text-xs text-amber-200">
+                          <p className="font-semibold text-amber-300 flex items-center gap-1.5">
+                            <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Local Device Storage Notice:</span>
+                          </p>
+                          <p className="text-[11px] leading-relaxed text-amber-200/80">
+                            Files browsed directly from your computer or phone are stored in this browser&apos;s local memory. To share your video with everyone globally across all devices, use <strong>Option 1 (Video URL)</strong> or place the file in the project folder at <code>/public/intro.mp4</code>.
+                          </p>
+                        </div>
+
+                        <div className="p-6 bg-slate-900/80 border border-dashed border-sky-500/40 hover:border-sky-400 rounded-2xl flex flex-col items-center justify-center text-center space-y-3 transition-colors">
+                          <input
+                            type="file"
+                            id="admin-video-file-input"
+                            accept="video/mp4,video/webm,video/ogg,video/quicktime"
+                            className="hidden"
+                            onChange={async (e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                const file = e.target.files[0];
+                                playClickSound(800);
+                                setIsUploadingVideo(true);
+                                setLocalVideoName(`${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)`);
+                                
+                                try {
+                                  const preview = URL.createObjectURL(file);
+                                  setLocalVideoPreviewUrl(preview);
+                                  await saveVideoFile(file);
+                                  // Clear conflicting URL so local video displays
+                                  updatePortfolioData({
+                                    personalInfo: {
+                                      ...data.personalInfo,
+                                      heroVideoUrl: '',
+                                    },
+                                  });
+                                  window.dispatchEvent(new Event('portfolio-video-updated'));
+                                  setAuthMsg({
+                                    type: 'success',
+                                    text: `Saved "${file.name}" to browser video storage! It will now play on this device.`,
+                                  });
+                                } catch (err) {
+                                  setAuthMsg({ type: 'error', text: 'Failed to process local video file.' });
+                                } finally {
+                                  setIsUploadingVideo(false);
+                                }
+                              }
+                            }}
+                          />
+
+                          {localVideoPreviewUrl ? (
+                            <div className="w-full space-y-3">
+                              <div className="relative w-full max-h-56 rounded-xl overflow-hidden border border-slate-800 bg-black flex items-center justify-center">
+                                <video
+                                  src={localVideoPreviewUrl}
+                                  autoPlay
+                                  loop
+                                  muted
+                                  controls
+                                  playsInline
+                                  className="w-full max-h-56 object-contain"
+                                />
+                              </div>
+                              <div className="flex items-center justify-between text-xs font-mono text-slate-300">
+                                <span>{localVideoName || 'Uploaded Video'}</span>
+                                <label
+                                  htmlFor="admin-video-file-input"
+                                  className="text-sky-400 hover:text-sky-300 font-bold cursor-pointer underline"
+                                >
+                                  Choose Different File
+                                </label>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="w-14 h-14 rounded-2xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400 shadow-inner">
+                                <Upload className="w-7 h-7" />
+                              </div>
+                              <div className="space-y-1">
+                                <label
+                                  htmlFor="admin-video-file-input"
+                                  className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs font-mono rounded-xl cursor-pointer inline-flex items-center gap-2 transition-all shadow-md"
+                                >
+                                  <FileVideo className="w-4 h-4" />
+                                  <span>Browse Video from PC / Phone</span>
+                                </label>
+                                <p className="text-[11px] text-slate-400">
+                                  Supports MP4, WebM, QuickTime MOV (up to 100MB)
+                                </p>
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Actions for local file */}
+                        <div className="flex gap-2">
                           <button
                             type="button"
-                            onClick={() => {
-                              setHeroVideoUrlInput('');
-                              updatePortfolioData({
-                                personalInfo: {
-                                  ...data.personalInfo,
-                                  heroVideoUrl: '',
-                                },
-                              });
+                            onClick={async () => {
+                              playClickSound(600);
+                              await deleteSavedVideo();
+                              setLocalVideoPreviewUrl('');
+                              setLocalVideoName('');
                               window.dispatchEvent(new Event('portfolio-video-updated'));
-                              setAuthMsg({ type: 'success', text: 'Global Video URL cleared.' });
+                              setAuthMsg({ type: 'success', text: 'Local browser video removed.' });
                             }}
-                            className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono rounded-xl transition-all"
+                            className="flex-1 py-2.5 bg-slate-900 hover:bg-rose-950/80 border border-slate-800 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 text-xs font-mono rounded-xl transition-all flex items-center justify-center gap-2"
                           >
-                            Clear URL
+                            <Trash2 className="w-4 h-4" />
+                            <span>Remove Local Video</span>
                           </button>
-                        )}
+                        </div>
                       </div>
-                    </form>
-
-                    {/* Method B: Local Browser Upload */}
-                    <div className="p-4 bg-slate-900/60 rounded-xl border border-slate-800 space-y-3">
-                      <label className="block text-xs font-mono text-slate-300 font-bold">
-                        Option 2: Upload Local Video File (Current Device Only)
-                      </label>
-
-                      <input
-                        type="file"
-                        id="admin-video-upload"
-                        accept="video/*"
-                        className="hidden"
-                        onChange={async (e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            const file = e.target.files[0];
-                            playClickSound(800);
-                            await saveVideoFile(file);
-                            window.dispatchEvent(new Event('portfolio-video-updated'));
-                            setAuthMsg({ type: 'success', text: `Successfully saved ${file.name} to local browser storage!` });
-                          }
-                        }}
-                      />
-
-                      <div className="flex flex-wrap items-center gap-3">
-                        <label
-                          htmlFor="admin-video-upload"
-                          className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white font-bold text-xs font-mono rounded-xl cursor-pointer flex items-center gap-2 transition-all shadow-md"
-                        >
-                          <Upload className="w-4 h-4" />
-                          <span>Select Video File (.mp4 / .webm)</span>
-                        </label>
-
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            playClickSound(600);
-                            await deleteSavedVideo();
-                            window.dispatchEvent(new Event('portfolio-video-updated'));
-                            setAuthMsg({ type: 'success', text: 'Custom local video cleared.' });
-                          }}
-                          className="px-4 py-2.5 bg-slate-800 hover:bg-rose-950/80 border border-slate-700 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 text-xs font-mono rounded-xl transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          <span>Delete Local Video</span>
-                        </button>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 )}
 
