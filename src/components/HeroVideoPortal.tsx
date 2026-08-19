@@ -243,7 +243,7 @@ export const HeroVideoPortal: React.FC<HeroVideoPortalProps> = ({ onVortexTrigge
         className={`relative w-full cursor-pointer select-none transition-all duration-150 ease-out perspective-1000 ${
           isFullscreen
             ? 'fixed inset-0 z-50 w-screen h-screen bg-black'
-            : 'h-[calc(100vh-5.5rem)] max-h-[880px] min-h-[480px] flex items-center justify-center'
+            : 'h-[calc(100dvh-5rem)] max-h-[880px] min-h-[380px] sm:min-h-[480px] flex items-center justify-center'
         }`}
         style={{
           transform: `translate3d(0, ${translateY}px, 0) scale(${scale}) rotate(${rotateDeg}deg) rotateX(${rotateXDeg}deg)`,
@@ -277,25 +277,41 @@ export const HeroVideoPortal: React.FC<HeroVideoPortalProps> = ({ onVortexTrigge
           }}
         >
           {videoSrc ? (
-            <video
-              ref={videoRef}
-              src={videoSrc}
-              autoPlay
-              loop
-              muted={isMuted}
-              playsInline
-              preload="auto"
-              // @ts-ignore
-              webkit-playsinline="true"
-              x5-playsinline="true"
-              onError={() => {
-                console.warn('Video failed to load on this device, falling back to cosmic portal canvas.');
-                setVideoSrc(null);
-              }}
-              onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
-              className="w-full h-full object-contain md:object-cover pointer-events-none drop-shadow-[0_0_60px_rgba(56,189,248,0.3)]"
-            />
+            <div className="relative w-full h-full flex items-center justify-center">
+              {/* Mobile Ambient Glow Reflection (creates a theater glow behind the resized video on phones) */}
+              <video
+                src={videoSrc}
+                autoPlay
+                loop
+                muted
+                playsInline
+                // @ts-ignore
+                webkit-playsinline="true"
+                x5-playsinline="true"
+                className="absolute inset-0 w-full h-full object-cover filter blur-3xl opacity-35 scale-110 md:hidden pointer-events-none"
+              />
+
+              {/* Main Crisp Video (Resized for mobile browsers without horizontal or vertical cutoffs) */}
+              <video
+                ref={videoRef}
+                src={videoSrc}
+                autoPlay
+                loop
+                muted={isMuted}
+                playsInline
+                preload="auto"
+                // @ts-ignore
+                webkit-playsinline="true"
+                x5-playsinline="true"
+                onError={() => {
+                  console.warn('Video failed to load on this device, falling back to cosmic portal canvas.');
+                  setVideoSrc(null);
+                }}
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+                className="relative z-10 w-full h-auto max-h-[76dvh] max-w-[94vw] object-contain rounded-2xl md:rounded-none md:max-h-none md:max-w-none md:h-full md:object-cover pointer-events-none drop-shadow-[0_0_60px_rgba(56,189,248,0.25)]"
+              />
+            </div>
           ) : (
             <div className="relative w-full h-full flex flex-col items-center justify-center">
               <canvas
@@ -322,47 +338,47 @@ export const HeroVideoPortal: React.FC<HeroVideoPortalProps> = ({ onVortexTrigge
           )}
         </div>
 
-        {/* Bottom Left Minimal Video Controls (Play/Pause & Mute) — Clean Square Icon Buttons as in screenshot */}
+        {/* Bottom Left Minimal Video Controls (Play/Pause & Mute) — Responsive Buttons */}
         {videoSrc && (
-          <div className="absolute bottom-4 left-4 sm:left-8 flex items-center gap-2.5 z-20 pointer-events-auto">
+          <div className="absolute bottom-3 sm:bottom-4 left-3 sm:left-8 flex items-center gap-2 sm:gap-2.5 z-20 pointer-events-auto">
             <button
               onClick={togglePlay}
-              className={`w-11 h-11 rounded-2xl flex items-center justify-center border transition-all duration-200 hover:scale-105 backdrop-blur-md shadow-lg ${
+              className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center border transition-all duration-200 hover:scale-105 backdrop-blur-md shadow-lg ${
                 isPlaying
                   ? 'bg-slate-950/80 border-cyan-500/50 text-cyan-400 shadow-cyan-500/20'
                   : 'bg-slate-950/80 border-slate-800 hover:border-slate-700 text-slate-300'
               }`}
               title={isPlaying ? 'Pause Video' : 'Play Video'}
             >
-              {isPlaying ? <Pause className="w-5 h-5 text-cyan-400 stroke-[2.2]" /> : <Play className="w-5 h-5 text-cyan-400 ml-0.5" />}
+              {isPlaying ? <Pause className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400 stroke-[2.2]" /> : <Play className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400 ml-0.5" />}
             </button>
 
             <button
               onClick={toggleMute}
-              className={`w-11 h-11 rounded-2xl flex items-center justify-center border transition-all duration-200 hover:scale-105 backdrop-blur-md shadow-lg ${
+              className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center border transition-all duration-200 hover:scale-105 backdrop-blur-md shadow-lg ${
                 !isMuted
                   ? 'bg-slate-950/80 border-cyan-500/40 text-cyan-400'
                   : 'bg-slate-950/80 border-slate-800 hover:border-slate-700 text-slate-400'
               }`}
               title={isMuted ? 'Unmute Audio' : 'Mute Audio'}
             >
-              {isMuted ? <VolumeX className="w-5 h-5 text-slate-400" /> : <Volume2 className="w-5 h-5 text-cyan-400" />}
+              {isMuted ? <VolumeX className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" /> : <Volume2 className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />}
             </button>
           </div>
         )}
 
         {/* Bottom Right Vertical Controls Stack: 1. Full Screen, 2. Enter Vortex */}
-        <div className="absolute bottom-4 right-4 sm:right-8 flex flex-col items-end gap-2.5 z-20 pointer-events-auto">
+        <div className="absolute bottom-3 sm:bottom-4 right-3 sm:right-8 flex flex-col items-end gap-2 sm:gap-2.5 z-20 pointer-events-auto">
           {/* 1. Full Screen Toggle (Icon only) */}
           <button
             onClick={toggleFullscreen}
-            className="w-11 h-11 rounded-2xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 hover:border-cyan-500/50 text-slate-300 hover:text-cyan-300 flex items-center justify-center backdrop-blur-md shadow-lg transition-all duration-200 hover:scale-105"
+            className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 hover:border-cyan-500/50 text-slate-300 hover:text-cyan-300 flex items-center justify-center backdrop-blur-md shadow-lg transition-all duration-200 hover:scale-105"
             title={isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
           >
             {isFullscreen ? (
-              <Minimize2 className="w-5 h-5 text-cyan-400" />
+              <Minimize2 className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
             ) : (
-              <Maximize2 className="w-5 h-5 text-cyan-400" />
+              <Maximize2 className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
             )}
           </button>
 
@@ -370,10 +386,10 @@ export const HeroVideoPortal: React.FC<HeroVideoPortalProps> = ({ onVortexTrigge
           {!isFullscreen && (
             <button
               onClick={handleVortexTrigger}
-              className="w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-600/90 to-indigo-600/90 hover:from-purple-500 hover:to-indigo-500 border border-purple-400/60 text-white flex items-center justify-center shadow-xl shadow-purple-950/70 backdrop-blur-md transition-all duration-200 hover:scale-105"
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-br from-purple-600/90 to-indigo-600/90 hover:from-purple-500 hover:to-indigo-500 border border-purple-400/60 text-white flex items-center justify-center shadow-xl shadow-purple-950/70 backdrop-blur-md transition-all duration-200 hover:scale-105"
               title="Enter Cosmic Vortex & Explore"
             >
-              <Zap className="w-5 h-5 text-amber-300 animate-pulse" />
+              <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300 animate-pulse" />
             </button>
           )}
         </div>

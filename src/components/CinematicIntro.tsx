@@ -11,7 +11,10 @@ import {
   Video,
   Sparkles,
   Zap,
+  Scan,
+  Smartphone,
 } from 'lucide-react';
+import { usePortfolio } from '../context/PortfolioContext';
 import { loadSavedVideo } from '../utils/videoStorage';
 import { playClickSound, playVortexSound, playEmergenceSound, startAmbientSpaceAudio } from '../utils/audio';
 import { scrollToElementFast } from '../utils/scroll';
@@ -25,6 +28,7 @@ interface CinematicIntroProps {
 export const CinematicIntro: React.FC<CinematicIntroProps> = ({
   onScrollToHero,
 }) => {
+  const { data } = usePortfolio();
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [isMuted, setIsMuted] = useState<boolean>(false);
@@ -32,6 +36,7 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
   const [isHovered, setIsHovered] = useState<boolean>(false);
   const [isVortexing, setIsVortexing] = useState<boolean>(false);
   const [isEmerging, setIsEmerging] = useState<boolean>(false);
+  const [isMobileFitMode, setIsMobileFitMode] = useState<boolean>(false); // Default to full screen edge-to-edge cover
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -51,11 +56,30 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
   const introY = useTransform(scrollYProgress, [0, 1], [0, 50]);
 
   const loadVideo = () => {
+    // 1. Check if configured in portfolio data (Cloud URL / Custom link)
+    const contextVideoUrl = data.personalInfo?.heroVideoUrl?.trim();
+    if (contextVideoUrl) {
+      setVideoSrc(contextVideoUrl);
+      return;
+    }
+
+    // 2. Check local browser indexedDB storage
     loadSavedVideo().then((url) => {
       if (url) {
         setVideoSrc(url);
       } else {
-        setVideoSrc(null);
+        // 3. Fallback check for static /intro.mp4 in public directory
+        fetch('/intro.mp4', { method: 'HEAD' })
+          .then((res) => {
+            if (res.ok && res.headers.get('content-type')?.includes('video')) {
+              setVideoSrc('/intro.mp4');
+            } else {
+              setVideoSrc(null);
+            }
+          })
+          .catch(() => {
+            setVideoSrc(null);
+          });
       }
     });
   };
@@ -74,7 +98,7 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
       if (vortexTimeoutRef.current) clearTimeout(vortexTimeoutRef.current);
       if (emergenceTimeoutRef.current) clearTimeout(emergenceTimeoutRef.current);
     };
-  }, []);
+  }, [data.personalInfo?.heroVideoUrl]);
 
   // Trigger cosmic vortex emergence when scrolling back up to Intro from below
   const triggerVortexEmergence = () => {
@@ -365,7 +389,7 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
       onClick={handleScreenClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`relative w-full h-screen min-h-[620px] flex flex-col justify-between overflow-hidden select-none cursor-pointer z-20 transition-all duration-300 ${
+      className={`relative w-full w-screen h-screen h-[100dvh] min-h-screen flex flex-col justify-between overflow-hidden select-none cursor-pointer z-20 transition-all duration-300 ${
         isFullscreen ? 'fixed inset-0 z-50 bg-black' : ''
       }`}
     >
@@ -435,17 +459,37 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
             className="w-full h-full relative flex items-center justify-center overflow-hidden"
           >
             {videoSrc ? (
-              <video
-                ref={videoRef}
-                src={videoSrc}
-                autoPlay
-                muted={isMuted}
-                playsInline
-                onEnded={handleVideoEnded}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
-                className="w-full h-full object-cover transition-transform duration-700 ease-out filter brightness-[1.02] contrast-[1.05]"
-              />
+              <div className="relative w-full h-full flex items-center justify-center">
+                {/* Mobile Ambient Glow Reflection (creates a theater glow behind the video on phones) */}
+                <video
+                  src={videoSrc}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  // @ts-ignore
+                  webkit-playsinline="true"
+                  x5-playsinline="true"
+                  className="absolute inset-0 w-full h-full object-cover filter blur-3xl opacity-35 scale-110 md:hidden pointer-events-none"
+                />
+
+                {/* Main Fullscreen Video */}
+                <video
+                  ref={videoRef}
+                  src={videoSrc}
+                  autoPlay
+                  muted={isMuted}
+                  playsInline
+                  preload="auto"
+                  // @ts-ignore
+                  webkit-playsinline="true"
+                  x5-playsinline="true"
+                  onEnded={handleVideoEnded}
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
+                  className="w-full h-full object-cover transition-transform duration-700 ease-out filter brightness-[1.02] contrast-[1.05]"
+                />
+              </div>
             ) : (
               <div className="relative w-full h-full flex items-center justify-center">
                 <canvas ref={canvasRef} className="w-full h-full object-cover" />
@@ -649,18 +693,35 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
           </motion.div>
         </motion.div>
 
-        {/* Bottom-Right: Video Controls (Play/Pause, Mute/Unmute, Fullscreen) - Vertically Stacked */}
+        {/* Bottom-Right: Video Controls (Play/Pause, Mute/Unmute, Fit Mode, Fullscreen) - Vertically Stacked */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
-          className="flex flex-col items-end gap-2.5 ml-auto"
+          className="flex flex-col items-end gap-2 sm:gap-2.5 ml-auto"
         >
           {videoSrc && (
             <>
+              {/* Mobile Fit/Fill Mode Switcher (Visible on mobile screens) */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  playClickSound(600);
+                  setIsMobileFitMode((prev) => !prev);
+                }}
+                className="md:hidden w-10 h-10 rounded-2xl bg-slate-950/80 border border-slate-800 hover:border-cyan-500/50 text-slate-300 hover:text-cyan-300 flex items-center justify-center backdrop-blur-md shadow-lg transition-all"
+                title={isMobileFitMode ? 'Fit Video to Screen' : 'Fill Whole Screen'}
+              >
+                {isMobileFitMode ? (
+                  <Smartphone className="w-4 h-4 text-cyan-400" />
+                ) : (
+                  <Scan className="w-4 h-4 text-cyan-400" />
+                )}
+              </button>
+
               <button
                 onClick={togglePlay}
-                className={`w-11 h-11 rounded-2xl flex items-center justify-center border transition-all duration-200 hover:scale-105 backdrop-blur-md shadow-lg ${
+                className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center border transition-all duration-200 hover:scale-105 backdrop-blur-md shadow-lg ${
                   isPlaying
                     ? 'bg-slate-950/80 border-cyan-500/50 text-cyan-400 shadow-cyan-500/20'
                     : 'bg-slate-950/80 border-slate-800 hover:border-slate-700 text-slate-300'
@@ -668,15 +729,15 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
                 title={isPlaying ? 'Pause Video' : 'Play Video'}
               >
                 {isPlaying ? (
-                  <Pause className="w-5 h-5 text-cyan-400 stroke-[2.2]" />
+                  <Pause className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400 stroke-[2.2]" />
                 ) : (
-                  <Play className="w-5 h-5 text-cyan-400 ml-0.5" />
+                  <Play className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400 ml-0.5" />
                 )}
               </button>
 
               <button
                 onClick={toggleMute}
-                className={`w-11 h-11 rounded-2xl flex items-center justify-center border transition-all duration-200 hover:scale-105 backdrop-blur-md shadow-lg ${
+                className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center border transition-all duration-200 hover:scale-105 backdrop-blur-md shadow-lg ${
                   !isMuted
                     ? 'bg-slate-950/80 border-cyan-500/40 text-cyan-400'
                     : 'bg-slate-950/80 border-slate-800 hover:border-slate-700 text-slate-400'
@@ -684,9 +745,9 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
                 title={isMuted ? 'Unmute Audio' : 'Mute Audio'}
               >
                 {isMuted ? (
-                  <VolumeX className="w-5 h-5 text-slate-400" />
+                  <VolumeX className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
                 ) : (
-                  <Volume2 className="w-5 h-5 text-cyan-400" />
+                  <Volume2 className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
                 )}
               </button>
 
@@ -695,27 +756,27 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({
                   e.stopPropagation();
                   triggerVortexWarp();
                 }}
-                className={`w-11 h-11 rounded-2xl flex items-center justify-center border transition-all duration-200 hover:scale-105 backdrop-blur-md shadow-lg ${
+                className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center border transition-all duration-200 hover:scale-105 backdrop-blur-md shadow-lg ${
                   isVortexing
                     ? 'bg-cyan-500/30 border-cyan-400 text-cyan-300 shadow-cyan-500/40 animate-pulse'
                     : 'bg-slate-950/80 border-purple-500/40 hover:border-purple-400 text-purple-400 hover:text-purple-300'
                 }`}
                 title="Trigger Vortex Warp to Portfolio"
               >
-                <Zap className="w-5 h-5 stroke-[2.2]" />
+                <Zap className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
               </button>
             </>
           )}
 
           <button
             onClick={toggleFullscreen}
-            className="w-11 h-11 rounded-2xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 hover:border-cyan-500/50 text-slate-300 hover:text-cyan-300 flex items-center justify-center backdrop-blur-md shadow-lg transition-all duration-200 hover:scale-105"
+            className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 hover:border-cyan-500/50 text-slate-300 hover:text-cyan-300 flex items-center justify-center backdrop-blur-md shadow-lg transition-all duration-200 hover:scale-105"
             title={isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
           >
             {isFullscreen ? (
-              <Minimize2 className="w-5 h-5 text-cyan-400" />
+              <Minimize2 className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
             ) : (
-              <Maximize2 className="w-5 h-5 text-cyan-400" />
+              <Maximize2 className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
             )}
           </button>
         </motion.div>
