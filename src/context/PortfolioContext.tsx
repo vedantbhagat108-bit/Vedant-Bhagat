@@ -25,6 +25,8 @@ interface PortfolioContextType {
   data: PortfolioData;
   isAdminLoggedIn: boolean;
   adminEmail: string | null;
+  isCloudSynced: boolean;
+  syncToCloud: () => Promise<boolean>;
   loginAsAdmin: (email: string, password?: string) => Promise<{ success: boolean; message: string }>;
   logoutAdmin: () => void;
   changeAdminPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean; message: string }>;
@@ -62,6 +64,59 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return defaultPortfolioData;
   });
 
+  const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
+
+  // Fetch cross-device customizations from the server on startup
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadServerData() {
+      try {
+        const res = await fetch('/api/portfolio/data');
+        if (res.ok) {
+          const result = await res.json();
+          if (result && result.data && isMounted) {
+            setData((prev) => ({
+              ...defaultPortfolioData,
+              ...prev,
+              ...result.data,
+            }));
+            setIsCloudSynced(true);
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...defaultPortfolioData, ...result.data }));
+            } catch {}
+            return;
+          }
+        }
+      } catch (err) {
+        console.log('Fetching server portfolio data failed, trying static /portfolio-data.json fallback:', err);
+      }
+
+      // Static fallback attempt
+      try {
+        const staticRes = await fetch('/portfolio-data.json');
+        if (staticRes.ok) {
+          const staticData = await staticRes.json();
+          if (staticData && isMounted) {
+            setData((prev) => ({
+              ...defaultPortfolioData,
+              ...prev,
+              ...staticData,
+            }));
+            setIsCloudSynced(true);
+          }
+        }
+      } catch {
+        // Use default/local data
+      }
+    }
+
+    loadServerData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(() => {
     try {
       // Clear any legacy persistent localStorage session
@@ -96,6 +151,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   }, []);
 
+  // Save to local storage whenever data changes
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -103,6 +159,25 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.error('Failed to save portfolio data:', e);
     }
   }, [data]);
+
+  // Sync current data to server for cross-device visibility
+  const syncToCloud = async (overrideData?: PortfolioData): Promise<boolean> => {
+    const payload = overrideData || data;
+    try {
+      const res = await fetch('/api/portfolio/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: payload }),
+      });
+      if (res.ok) {
+        setIsCloudSynced(true);
+        return true;
+      }
+    } catch (e) {
+      console.error('Failed to sync portfolio data to server:', e);
+    }
+    return false;
+  };
 
   const loginAsAdmin = async (email: string, password?: string): Promise<{ success: boolean; message: string }> => {
     const cleanEmail = email.trim().toLowerCase();
@@ -227,15 +302,21 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const updatePortfolioData = (newData: Partial<PortfolioData>) => {
-    setData((prev) => ({
-      ...prev,
-      ...newData,
-    }));
+    setData((prev) => {
+      const updated = {
+        ...prev,
+        ...newData,
+      };
+      // Send to server in the background so all devices update
+      syncToCloud(updated);
+      return updated;
+    });
   };
 
   const resetToDefaults = () => {
     setData(defaultPortfolioData);
     localStorage.removeItem(STORAGE_KEY);
+    syncToCloud(defaultPortfolioData);
   };
 
   return (
@@ -244,6 +325,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         data,
         isAdminLoggedIn,
         adminEmail,
+        isCloudSynced,
+        syncToCloud,
         loginAsAdmin,
         logoutAdmin,
         changeAdminPassword,

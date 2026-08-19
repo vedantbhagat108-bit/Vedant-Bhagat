@@ -1,5 +1,7 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
+import multer from 'multer';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 
@@ -7,7 +9,31 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  app.use(express.json());
+  // Ensure public and data directories exist
+  const publicDir = path.resolve(process.cwd(), 'public');
+  if (!fs.existsSync(publicDir)) {
+    fs.mkdirSync(publicDir, { recursive: true });
+  }
+
+  // Multer config for direct server-side video uploads (cross-device persistent)
+  const videoStorage = multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      cb(null, publicDir);
+    },
+    filename: (_req, _file, cb) => {
+      cb(null, 'hero-video.mp4');
+    },
+  });
+
+  const uploadMiddleware = multer({
+    storage: videoStorage,
+    limits: { fileSize: 250 * 1024 * 1024 }, // 250MB
+  });
+
+  app.use(express.json({ limit: '25mb' }));
+
+  // Statically serve public directory for hero-video.mp4 and portfolio data
+  app.use(express.static(publicDir));
 
   // API Route for AI Assistant (Gemini)
   app.post('/api/chat', async (req, res) => {
@@ -343,6 +369,123 @@ Always respond enthusiastically, professionally, and concisely in a space/cosmic
     } catch (err: any) {
       console.error('Error deleting blob:', err);
       return res.status(500).json({ error: err.message || 'Failed to delete blob' });
+    }
+  });
+
+  // ----------------------------------------------------
+  // CROSS-DEVICE DIRECT VIDEO STORAGE ENDPOINTS
+  // ----------------------------------------------------
+  const videoFilePath = path.join(publicDir, 'hero-video.mp4');
+
+  // Check current server-stored video
+  app.get('/api/video/current', (_req, res) => {
+    try {
+      if (fs.existsSync(videoFilePath)) {
+        const stats = fs.statSync(videoFilePath);
+        return res.json({
+          exists: true,
+          url: '/hero-video.mp4',
+          size: stats.size,
+          updatedAt: stats.mtime.toISOString(),
+        });
+      }
+      return res.json({ exists: false, url: null });
+    } catch {
+      return res.json({ exists: false, url: null });
+    }
+  });
+
+  // Direct video upload to server (Cross-Device Persistent)
+  app.post(
+    '/api/video/upload',
+    uploadMiddleware.fields([{ name: 'video', maxCount: 1 }, { name: 'file', maxCount: 1 }]),
+    (req, res) => {
+      try {
+        const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+        const uploadedFile = (files?.video && files.video[0]) || (files?.file && files.file[0]);
+
+        if (!uploadedFile) {
+          return res.status(400).json({ success: false, message: 'No video file received' });
+        }
+
+        const stats = fs.statSync(videoFilePath);
+
+        // Update portfolio-data.json so heroVideoUrl points to /hero-video.mp4
+        const portfolioDataPath = path.join(publicDir, 'portfolio-data.json');
+        if (fs.existsSync(portfolioDataPath)) {
+          try {
+            const raw = fs.readFileSync(portfolioDataPath, 'utf-8');
+            const data = JSON.parse(raw);
+            if (data && data.personalInfo) {
+              data.personalInfo.heroVideoUrl = '/hero-video.mp4';
+              fs.writeFileSync(portfolioDataPath, JSON.stringify(data, null, 2), 'utf-8');
+            }
+          } catch (e) {
+            console.error('Failed to update portfolio-data.json with video URL:', e);
+          }
+        }
+
+        return res.json({
+          success: true,
+          url: '/hero-video.mp4',
+          size: stats.size,
+          message: 'Video successfully saved to server and synced across all devices!',
+        });
+      } catch (err: any) {
+        console.error('Server video upload error:', err);
+        return res.status(500).json({ success: false, message: err.message || 'Video upload failed' });
+      }
+    }
+  );
+
+  // Delete server video
+  app.post('/api/video/delete', (_req, res) => {
+    try {
+      if (fs.existsSync(videoFilePath)) {
+        fs.unlinkSync(videoFilePath);
+      }
+      return res.json({ success: true, message: 'Server video deleted successfully' });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // ----------------------------------------------------
+  // CROSS-DEVICE PORTFOLIO DATA SYNCHRONIZATION
+  // ----------------------------------------------------
+  const portfolioDataFilePath = path.join(publicDir, 'portfolio-data.json');
+
+  // Fetch cross-device portfolio customizations
+  app.get('/api/portfolio/data', (_req, res) => {
+    try {
+      if (fs.existsSync(portfolioDataFilePath)) {
+        const raw = fs.readFileSync(portfolioDataFilePath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        return res.json({ success: true, data: parsed, synced: true });
+      }
+      return res.json({ success: true, data: null, synced: false });
+    } catch (err: any) {
+      console.error('Error reading portfolio data:', err);
+      return res.json({ success: false, data: null, error: err.message });
+    }
+  });
+
+  // Save cross-device portfolio customizations
+  app.post('/api/portfolio/data', (req, res) => {
+    try {
+      const { data } = req.body || {};
+      if (!data || typeof data !== 'object') {
+        return res.status(400).json({ success: false, message: 'Invalid portfolio data payload' });
+      }
+
+      fs.writeFileSync(portfolioDataFilePath, JSON.stringify(data, null, 2), 'utf-8');
+      return res.json({
+        success: true,
+        message: 'Portfolio data saved to server and synced across all devices globally!',
+      });
+    } catch (err: any) {
+      console.error('Error writing portfolio data:', err);
+      return res.status(500).json({ success: false, message: err.message || 'Failed to persist portfolio data' });
     }
   });
 

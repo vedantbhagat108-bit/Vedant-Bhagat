@@ -59,6 +59,9 @@ import {
   resolveActiveHeroVideo,
   setVideoDisabledPreference,
   isVideoDisabledPreference,
+  uploadDirectServerVideo,
+  getCurrentServerVideo,
+  deleteCurrentServerVideo,
 } from '../utils/videoStorage';
 import {
   uploadVideoToVercelBlob,
@@ -128,7 +131,9 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
   const [skillsList, setSkillsList] = useState<SkillCategory[]>(data.skillCategories || []);
   const [certificationsList, setCertificationsList] = useState<Certification[]>(data.certifications || []);
   const [heroVideoUrlInput, setHeroVideoUrlInput] = useState(data.personalInfo.heroVideoUrl || '');
-  const [videoInputMode, setVideoInputMode] = useState<'blob' | 'file' | 'url' | 'github'>('blob');
+  const [videoInputMode, setVideoInputMode] = useState<'server' | 'blob' | 'url' | 'file' | 'github'>('server');
+  const [serverVideo, setServerVideo] = useState<{ exists: boolean; url: string | null; size?: number } | null>(null);
+  const [isServerUploading, setIsServerUploading] = useState<boolean>(false);
   const [vercelBlobVideo, setVercelBlobVideo] = useState<VercelBlobVideoInfo | null>(null);
   const [blobUploadProgress, setBlobUploadProgress] = useState<number | null>(null);
   const [isBlobUploading, setIsBlobUploading] = useState<boolean>(false);
@@ -144,6 +149,9 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
   // Load existing saved video info on tab switch or open
   React.useEffect(() => {
     if (activeTab === 'video' || isOpen) {
+      getCurrentServerVideo().then((srv) => {
+        setServerVideo(srv);
+      });
       getActiveVercelBlobVideo().then((blob) => {
         setVercelBlobVideo(blob);
       });
@@ -1317,7 +1325,9 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                         ) : activeResolvedVideo ? (
                           <div className="flex flex-col gap-1">
                             <span className="text-sky-300 font-semibold truncate">
-                              {vercelBlobVideo?.url && activeResolvedVideo === vercelBlobVideo.url
+                              {serverVideo?.exists && activeResolvedVideo === serverVideo.url
+                                ? `⚡ Server Direct Video (Live on All Devices): ${serverVideo.url} (${((serverVideo.size || 0) / (1024 * 1024)).toFixed(1)} MB)`
+                                : vercelBlobVideo?.url && activeResolvedVideo === vercelBlobVideo.url
                                 ? `☁️ Vercel Blob Cloud (Multi-Device Active): ${vercelBlobVideo.pathname || vercelBlobVideo.url}`
                                 : localVideoName
                                 ? `📁 Local Upload: ${localVideoName}`
@@ -1327,9 +1337,10 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                                 ? `🐙 GitHub Repository Video: ${detectedRepoVideo}`
                                 : activeResolvedVideo}
                             </span>
-                            {detectedRepoVideo && (localVideoName || data.personalInfo?.heroVideoUrl || vercelBlobVideo?.url) && (
-                              <span className="text-[10px] text-slate-400">
-                                (Synced dynamically to all devices)
+                            {(serverVideo?.exists || vercelBlobVideo?.url || data.personalInfo?.heroVideoUrl) && (
+                              <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                                <Check className="w-3 h-3 text-emerald-400" />
+                                Synced and streaming across all mobile and desktop devices globally
                               </span>
                             )}
                           </div>
@@ -1340,21 +1351,37 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                     </div>
 
                     {/* Mode Segmented Selector */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-slate-900/90 rounded-xl border border-slate-800">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1 bg-slate-900/90 rounded-xl border border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playClickSound(700);
+                          setVideoInputMode('server');
+                        }}
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-mono font-medium transition-all ${
+                          videoInputMode === 'server'
+                            ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                        }`}
+                      >
+                        <Zap className="w-3.5 h-3.5" />
+                        <span>1. Server Direct</span>
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => {
                           playClickSound(700);
                           setVideoInputMode('blob');
                         }}
-                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-mono font-medium transition-all ${
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-mono font-medium transition-all ${
                           videoInputMode === 'blob'
                             ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                         }`}
                       >
                         <Cloud className="w-3.5 h-3.5" />
-                        <span>1. Vercel Blob</span>
+                        <span>2. Vercel Blob</span>
                       </button>
 
                       <button
@@ -1363,14 +1390,14 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                           playClickSound(700);
                           setVideoInputMode('url');
                         }}
-                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-mono font-medium transition-all ${
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-mono font-medium transition-all ${
                           videoInputMode === 'url'
                             ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                         }`}
                       >
                         <Link className="w-3.5 h-3.5" />
-                        <span>2. Stream URL</span>
+                        <span>3. Stream URL</span>
                       </button>
 
                       <button
@@ -1379,14 +1406,14 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                           playClickSound(700);
                           setVideoInputMode('file');
                         }}
-                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-mono font-medium transition-all ${
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-mono font-medium transition-all ${
                           videoInputMode === 'file'
                             ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                         }`}
                       >
                         <FileVideo className="w-3.5 h-3.5" />
-                        <span>3. Local File</span>
+                        <span>4. Local File</span>
                       </button>
 
                       <button
@@ -1395,16 +1422,178 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                           playClickSound(700);
                           setVideoInputMode('github');
                         }}
-                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-mono font-medium transition-all ${
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-mono font-medium transition-all ${
                           videoInputMode === 'github'
                             ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                         }`}
                       >
                         <GitBranch className="w-3.5 h-3.5" />
-                        <span>4. GitHub Repo</span>
+                        <span>5. GitHub Repo</span>
                       </button>
                     </div>
+
+                    {/* Mode 1: Server Direct Storage Mode (Guaranteed Cross-Device Sync) */}
+                    {videoInputMode === 'server' && (
+                      <div className="space-y-4">
+                        <div className="p-3.5 bg-emerald-950/40 border border-emerald-500/40 rounded-xl space-y-1.5 text-xs text-emerald-200">
+                          <div className="flex items-center justify-between">
+                            <p className="font-semibold text-emerald-300 flex items-center gap-1.5">
+                              <Zap className="w-4 h-4 text-emerald-400" />
+                              <span>Direct Server Video Storage (Instant Cross-Device Sync):</span>
+                            </p>
+                            <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] rounded-full font-mono flex items-center gap-1">
+                              <Check className="w-3 h-3 text-emerald-400" /> No Token Required
+                            </span>
+                          </div>
+                          <p className="text-[11px] leading-relaxed text-emerald-200/90">
+                            Upload your MP4 video directly to the server. It is saved to <strong>/hero-video.mp4</strong> and automatically streams on <strong>every mobile device, desktop, and visitor instantly</strong>!
+                          </p>
+                        </div>
+
+                        {/* Drag & Drop / Upload Card for Server Direct */}
+                        <div className="p-6 bg-slate-900/80 border border-dashed border-emerald-500/40 hover:border-emerald-400 rounded-2xl flex flex-col items-center justify-center text-center space-y-4 transition-colors">
+                          <input
+                            type="file"
+                            id="admin-server-video-input"
+                            accept="video/mp4,video/webm,video/ogg,video/quicktime"
+                            className="hidden"
+                            onChange={async (e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                const file = e.target.files[0];
+                                playClickSound(800);
+                                setIsServerUploading(true);
+
+                                try {
+                                  const result = await uploadDirectServerVideo(file);
+                                  const srv = await getCurrentServerVideo();
+                                  setServerVideo(srv);
+                                  setVideoDisabledPreference(false);
+                                  setIsVideoDisabled(false);
+                                  window.dispatchEvent(new Event('portfolio-video-updated'));
+                                  const active = await resolveActiveHeroVideo(data.personalInfo?.heroVideoUrl);
+                                  setActiveResolvedVideo(active);
+
+                                  setAuthMsg({
+                                    type: 'success',
+                                    text: `Success! Video uploaded and saved as /hero-video.mp4. Synced across all devices!`,
+                                  });
+                                } catch (err: any) {
+                                  console.error('Server video upload error:', err);
+                                  setAuthMsg({
+                                    type: 'error',
+                                    text: err.message || 'Failed to upload video to server.',
+                                  });
+                                } finally {
+                                  setIsServerUploading(false);
+                                }
+                              }
+                            }}
+                          />
+
+                          {serverVideo?.exists ? (
+                            <div className="w-full space-y-3">
+                              <div className="relative w-full max-h-56 rounded-xl overflow-hidden border border-slate-800 bg-black flex items-center justify-center">
+                                <video
+                                  src={serverVideo.url || '/hero-video.mp4'}
+                                  autoPlay
+                                  loop
+                                  muted
+                                  controls
+                                  playsInline
+                                  className="w-full max-h-56 object-contain"
+                                />
+                              </div>
+                              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs font-mono text-slate-300">
+                                <span className="text-emerald-400 font-bold truncate">
+                                  ✓ Live Server Video: {serverVideo.url} ({((serverVideo.size || 0) / (1024 * 1024)).toFixed(1)} MB)
+                                </span>
+                                <label
+                                  htmlFor="admin-server-video-input"
+                                  className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-lg font-bold cursor-pointer transition-all"
+                                >
+                                  Replace Server Video
+                                </label>
+                              </div>
+                            </div>
+                          ) : isServerUploading ? (
+                            <div className="w-full max-w-md space-y-3 py-4">
+                              <div className="w-12 h-12 mx-auto rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 animate-pulse">
+                                <Zap className="w-6 h-6 animate-bounce" />
+                              </div>
+                              <div className="text-xs font-mono text-emerald-300 font-semibold">
+                                Uploading and saving video to server storage...
+                              </div>
+                              <p className="text-[11px] text-slate-400">
+                                Streaming and writing directly to server storage for global cross-device access...
+                              </p>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-inner">
+                                <Upload className="w-7 h-7" />
+                              </div>
+                              <div className="space-y-1">
+                                <label
+                                  htmlFor="admin-server-video-input"
+                                  className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs font-mono rounded-xl cursor-pointer inline-flex items-center gap-2 transition-all shadow-md"
+                                >
+                                  <Upload className="w-4 h-4" />
+                                  <span>Select Video to Upload to Server (Cross-Device)</span>
+                                </label>
+                                <p className="text-[11px] text-slate-400">
+                                  Supports MP4, WebM, QuickTime MOV (Up to 250 MB)
+                                </p>
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Actions for Server Video */}
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {serverVideo?.exists && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                playClickSound(600);
+                                await deleteCurrentServerVideo();
+                                setServerVideo({ exists: false, url: null });
+                                window.dispatchEvent(new Event('portfolio-video-updated'));
+                                const newActive = await resolveActiveHeroVideo(data.personalInfo?.heroVideoUrl);
+                                setActiveResolvedVideo(newActive);
+                                setAuthMsg({
+                                  type: 'success',
+                                  text: 'Server video deleted and reset across all devices.',
+                                });
+                              }}
+                              className="flex-1 py-2.5 px-3 bg-slate-900 hover:bg-rose-950/80 border border-slate-800 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 text-xs font-mono rounded-xl transition-all flex items-center justify-center gap-2"
+                            >
+                              <Trash2 className="w-4 h-4 text-rose-400" />
+                              <span>Delete Server Video</span>
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              playClickSound(700);
+                              const srv = await getCurrentServerVideo();
+                              setServerVideo(srv);
+                              const active = await resolveActiveHeroVideo(data.personalInfo?.heroVideoUrl);
+                              setActiveResolvedVideo(active);
+                              setAuthMsg({
+                                type: 'info',
+                                text: srv.exists ? 'Refreshed! Server video is live and active.' : 'Refreshed. No server video present.',
+                              });
+                            }}
+                            className="py-2.5 px-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-emerald-300 text-xs font-mono rounded-xl transition-all flex items-center justify-center gap-1.5"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Check Server Video Status</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Mode 1: Vercel Blob Storage Mode (Cloud Cross-Device Sync) */}
                     {videoInputMode === 'blob' && (

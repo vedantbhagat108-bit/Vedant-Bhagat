@@ -195,11 +195,51 @@ export async function detectProjectRepoVideo(): Promise<string | null> {
 }
 
 /**
+ * Direct Server-Side Video Storage Helpers (Syncs across all devices without requiring cloud tokens)
+ */
+export async function uploadDirectServerVideo(file: File): Promise<{ success: boolean; url: string; message: string }> {
+  const formData = new FormData();
+  formData.append('video', file);
+
+  const res = await fetch('/api/video/upload', {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || 'Server video upload failed');
+  }
+
+  return await res.json();
+}
+
+export async function getCurrentServerVideo(): Promise<{ exists: boolean; url: string | null; size?: number }> {
+  try {
+    const res = await fetch('/api/video/current');
+    if (!res.ok) return { exists: false, url: null };
+    return await res.json();
+  } catch {
+    return { exists: false, url: null };
+  }
+}
+
+export async function deleteCurrentServerVideo(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/video/delete', { method: 'POST' });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Unified resolver for the active Hero video:
  * 1. Explicit Custom URL from Portfolio Settings (if entered)
- * 2. Vercel Blob Cloud Video (synced across all devices)
- * 3. Uploaded video file from IndexedDB (local device override)
- * 4. Video file added to GitHub / public folder (e.g. /intro.mp4, /video.mp4, etc.)
+ * 2. Server-stored video (/hero-video.mp4 or via /api/video/current)
+ * 3. Vercel Blob Cloud Video (synced across all devices)
+ * 4. Uploaded video file from IndexedDB (local device override)
+ * 5. Video file added to GitHub / public folder (e.g. /intro.mp4, /video.mp4, etc.)
  */
 export async function resolveActiveHeroVideo(configuredUrl?: string | null): Promise<string | null> {
   // 1. If explicit URL provided in customization, prioritize it
@@ -208,7 +248,17 @@ export async function resolveActiveHeroVideo(configuredUrl?: string | null): Pro
     return cleanUrl;
   }
 
-  // 2. Check if Vercel Blob cloud video is available (syncs to all devices globally)
+  // 2. Check if a direct server-stored video exists (cross-device sync)
+  try {
+    const serverVideo = await getCurrentServerVideo();
+    if (serverVideo && serverVideo.exists && serverVideo.url) {
+      return serverVideo.url;
+    }
+  } catch {
+    // Proceed
+  }
+
+  // 3. Check if Vercel Blob cloud video is available (syncs to all devices globally)
   try {
     const blobVideo = await getActiveVercelBlobVideo();
     if (blobVideo && blobVideo.url) {
@@ -218,13 +268,13 @@ export async function resolveActiveHeroVideo(configuredUrl?: string | null): Pro
     // Ignore and proceed to local fallbacks
   }
 
-  // 3. Check if a local video file was uploaded via customization on this device
+  // 4. Check if a local video file was uploaded via customization on this device
   const savedUploadedVideo = await loadSavedVideo();
   if (savedUploadedVideo) {
     return savedUploadedVideo;
   }
 
-  // 4. If user has not explicitly disabled video, probe GitHub repo / public static files
+  // 5. If user has not explicitly disabled video, probe GitHub repo / public static files
   const isExplicitlyDisabled = typeof window !== 'undefined' && localStorage.getItem(VIDEO_DISABLED_KEY) === 'true';
   if (!isExplicitlyDisabled) {
     const repoVideo = await detectProjectRepoVideo();
