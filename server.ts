@@ -181,6 +181,153 @@ Always respond enthusiastically, professionally, and concisely in a space/cosmic
     });
   });
 
+  // In-memory active blob cache (falls back to list() if token configured)
+  let activeBlobVideo: { url: string; pathname: string; size?: number; uploadedAt: string } | null = null;
+
+  // Vercel Blob Status Check
+  app.get('/api/blob/status', (_req, res) => {
+    const isConfigured = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+    res.json({
+      configured: isConfigured,
+      message: isConfigured
+        ? 'Vercel Blob Storage is connected and ready for cross-device synchronization.'
+        : 'BLOB_READ_WRITE_TOKEN environment variable not set. Please connect a Blob Store in Vercel Storage settings.',
+    });
+  });
+
+  // Get active Vercel Blob video
+  app.get('/api/blob/active-video', async (_req, res) => {
+    try {
+      if (activeBlobVideo) {
+        return res.json(activeBlobVideo);
+      }
+
+      // If token is configured, check blobs in store
+      if (process.env.BLOB_READ_WRITE_TOKEN) {
+        const { list } = await import('@vercel/blob');
+        const response = await list({ prefix: 'hero-videos/', limit: 5 });
+        if (response.blobs && response.blobs.length > 0) {
+          // Sort by uploadedAt descending
+          const latest = response.blobs.sort(
+            (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+          )[0];
+          activeBlobVideo = {
+            url: latest.url,
+            pathname: latest.pathname,
+            size: latest.size,
+            uploadedAt: latest.uploadedAt.toISOString(),
+          };
+          return res.json(activeBlobVideo);
+        }
+      }
+
+      return res.json({ url: null });
+    } catch (err) {
+      console.warn('Error fetching active blob video:', err);
+      return res.json({ url: null });
+    }
+  });
+
+  // Client-side direct stream token generation via handleUpload
+  app.post('/api/blob-upload', async (req, res) => {
+    try {
+      if (!process.env.BLOB_READ_WRITE_TOKEN) {
+        return res.status(400).json({
+          error: 'Vercel Blob storage is not connected. Add BLOB_READ_WRITE_TOKEN to your environment variables.',
+        });
+      }
+
+      const { handleUpload } = await import('@vercel/blob/client');
+      const jsonResponse = await handleUpload({
+        body: req.body,
+        request: req,
+        onBeforeGenerateToken: async (pathname) => {
+          return {
+            allowedContentTypes: ['video/mp4', 'video/webm', 'video/quicktime', 'video/ogg', 'video/x-matroska'],
+            maximumSizeInBytes: 250 * 1024 * 1024, // 250MB
+            tokenPayload: JSON.stringify({ pathname }),
+          };
+        },
+        onUploadCompleted: async ({ blob }) => {
+          activeBlobVideo = {
+            url: blob.url,
+            pathname: blob.pathname,
+            uploadedAt: new Date().toISOString(),
+          };
+          console.log('Vercel Blob upload completed:', blob.url);
+        },
+      });
+
+      return res.json(jsonResponse);
+    } catch (error: any) {
+      console.error('Error handling blob upload:', error);
+      return res.status(400).json({ error: error.message || 'Failed to handle blob upload' });
+    }
+  });
+
+  // Set active video metadata after client upload
+  app.post('/api/blob/set-active', (req, res) => {
+    const { url, pathname, size } = req.body || {};
+    if (url) {
+      activeBlobVideo = {
+        url,
+        pathname: pathname || 'hero-videos/hero-intro.mp4',
+        size,
+        uploadedAt: new Date().toISOString(),
+      };
+      return res.json({ success: true, active: activeBlobVideo });
+    }
+    return res.status(400).json({ error: 'Missing video url' });
+  });
+
+  // Server-side direct upload fallback
+  app.post('/api/blob/direct-upload', async (req, res) => {
+    try {
+      if (!process.env.BLOB_READ_WRITE_TOKEN) {
+        return res.status(400).json({
+          error: 'BLOB_READ_WRITE_TOKEN environment variable not set on server.',
+        });
+      }
+
+      const filename = (req.query.filename as string) || `hero-intro-${Date.now()}.mp4`;
+      const { put } = await import('@vercel/blob');
+      const blob = await put(`hero-videos/${filename}`, req, {
+        access: 'public',
+        contentType: req.headers['content-type'] || 'video/mp4',
+      });
+
+      activeBlobVideo = {
+        url: blob.url,
+        pathname: blob.pathname,
+        uploadedAt: new Date().toISOString(),
+      };
+
+      return res.json({ url: blob.url, pathname: blob.pathname });
+    } catch (err: any) {
+      console.error('Direct blob upload error:', err);
+      return res.status(500).json({ error: err.message || 'Direct blob upload failed' });
+    }
+  });
+
+  // Delete video from Vercel Blob
+  app.post('/api/blob/delete', async (req, res) => {
+    try {
+      const { url } = req.body || {};
+      const targetUrl = url || activeBlobVideo?.url;
+
+      if (process.env.BLOB_READ_WRITE_TOKEN && targetUrl) {
+        const { del } = await import('@vercel/blob');
+        await del(targetUrl);
+      }
+
+      activeBlobVideo = null;
+      return res.json({ success: true, message: 'Video deleted from Vercel Blob' });
+    } catch (err: any) {
+      console.error('Error deleting blob:', err);
+      return res.status(500).json({ error: err.message || 'Failed to delete blob' });
+    }
+  });
+
   // Change Owner Password Endpoint
   app.post('/api/auth/change-password', (req, res) => {
     const { currentPassword, newPassword } = req.body || {};

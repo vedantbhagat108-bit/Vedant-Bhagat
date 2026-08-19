@@ -1,3 +1,5 @@
+import { getActiveVercelBlobVideo } from './vercelBlob';
+
 // IndexedDB storage utility for large user videos and repo asset auto-discovery
 const DB_NAME = 'VedantPortfolioMediaDB';
 const DB_VERSION = 2;
@@ -195,8 +197,9 @@ export async function detectProjectRepoVideo(): Promise<string | null> {
 /**
  * Unified resolver for the active Hero video:
  * 1. Explicit Custom URL from Portfolio Settings (if entered)
- * 2. Uploaded video file from IndexedDB (if uploaded)
- * 3. Video file added to GitHub / public folder (e.g. /intro.mp4, /video.mp4, etc.)
+ * 2. Vercel Blob Cloud Video (synced across all devices)
+ * 3. Uploaded video file from IndexedDB (local device override)
+ * 4. Video file added to GitHub / public folder (e.g. /intro.mp4, /video.mp4, etc.)
  */
 export async function resolveActiveHeroVideo(configuredUrl?: string | null): Promise<string | null> {
   // 1. If explicit URL provided in customization, prioritize it
@@ -205,13 +208,23 @@ export async function resolveActiveHeroVideo(configuredUrl?: string | null): Pro
     return cleanUrl;
   }
 
-  // 2. Check if a local video file was uploaded via customization
+  // 2. Check if Vercel Blob cloud video is available (syncs to all devices globally)
+  try {
+    const blobVideo = await getActiveVercelBlobVideo();
+    if (blobVideo && blobVideo.url) {
+      return blobVideo.url;
+    }
+  } catch {
+    // Ignore and proceed to local fallbacks
+  }
+
+  // 3. Check if a local video file was uploaded via customization on this device
   const savedUploadedVideo = await loadSavedVideo();
   if (savedUploadedVideo) {
     return savedUploadedVideo;
   }
 
-  // 3. If user has not explicitly disabled video, probe GitHub repo / public static files
+  // 4. If user has not explicitly disabled video, probe GitHub repo / public static files
   const isExplicitlyDisabled = typeof window !== 'undefined' && localStorage.getItem(VIDEO_DISABLED_KEY) === 'true';
   if (!isExplicitlyDisabled) {
     const repoVideo = await detectProjectRepoVideo();

@@ -44,6 +44,8 @@ import {
   Play,
   Pause,
   Check,
+  Cloud,
+  CloudUpload,
 } from 'lucide-react';
 import { usePortfolio } from '../context/PortfolioContext';
 import { SkillCategory, Certification } from '../types';
@@ -58,6 +60,13 @@ import {
   setVideoDisabledPreference,
   isVideoDisabledPreference,
 } from '../utils/videoStorage';
+import {
+  uploadVideoToVercelBlob,
+  deleteVercelBlobVideo,
+  getActiveVercelBlobVideo,
+  checkVercelBlobStatus,
+  type VercelBlobVideoInfo,
+} from '../utils/vercelBlob';
 
 interface AdminModalProps {
   isOpen: boolean;
@@ -119,7 +128,11 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
   const [skillsList, setSkillsList] = useState<SkillCategory[]>(data.skillCategories || []);
   const [certificationsList, setCertificationsList] = useState<Certification[]>(data.certifications || []);
   const [heroVideoUrlInput, setHeroVideoUrlInput] = useState(data.personalInfo.heroVideoUrl || '');
-  const [videoInputMode, setVideoInputMode] = useState<'file' | 'url' | 'github'>('file');
+  const [videoInputMode, setVideoInputMode] = useState<'blob' | 'file' | 'url' | 'github'>('blob');
+  const [vercelBlobVideo, setVercelBlobVideo] = useState<VercelBlobVideoInfo | null>(null);
+  const [blobUploadProgress, setBlobUploadProgress] = useState<number | null>(null);
+  const [isBlobUploading, setIsBlobUploading] = useState<boolean>(false);
+  const [blobStatus, setBlobStatus] = useState<{ configured: boolean; message?: string } | null>(null);
   const [localVideoName, setLocalVideoName] = useState<string>('');
   const [localVideoPreviewUrl, setLocalVideoPreviewUrl] = useState<string>('');
   const [detectedRepoVideo, setDetectedRepoVideo] = useState<string | null>(null);
@@ -131,6 +144,12 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
   // Load existing saved video info on tab switch or open
   React.useEffect(() => {
     if (activeTab === 'video' || isOpen) {
+      getActiveVercelBlobVideo().then((blob) => {
+        setVercelBlobVideo(blob);
+      });
+      checkVercelBlobStatus().then((st) => {
+        setBlobStatus(st);
+      });
       loadSavedVideo().then((url) => {
         if (url) {
           setLocalVideoPreviewUrl(url);
@@ -1298,17 +1317,19 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                         ) : activeResolvedVideo ? (
                           <div className="flex flex-col gap-1">
                             <span className="text-sky-300 font-semibold truncate">
-                              {localVideoName
-                                ? `📁 Custom Upload: ${localVideoName}`
+                              {vercelBlobVideo?.url && activeResolvedVideo === vercelBlobVideo.url
+                                ? `☁️ Vercel Blob Cloud (Multi-Device Active): ${vercelBlobVideo.pathname || vercelBlobVideo.url}`
+                                : localVideoName
+                                ? `📁 Local Upload: ${localVideoName}`
                                 : data.personalInfo?.heroVideoUrl
                                 ? `🔗 Custom URL: ${data.personalInfo.heroVideoUrl}`
                                 : detectedRepoVideo
                                 ? `🐙 GitHub Repository Video: ${detectedRepoVideo}`
                                 : activeResolvedVideo}
                             </span>
-                            {detectedRepoVideo && (localVideoName || data.personalInfo?.heroVideoUrl) && (
+                            {detectedRepoVideo && (localVideoName || data.personalInfo?.heroVideoUrl || vercelBlobVideo?.url) && (
                               <span className="text-[10px] text-slate-400">
-                                (Overriding GitHub repo file &ldquo;{detectedRepoVideo}&rdquo;)
+                                (Synced dynamically to all devices)
                               </span>
                             )}
                           </div>
@@ -1319,21 +1340,21 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                     </div>
 
                     {/* Mode Segmented Selector */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-1 bg-slate-900/90 rounded-xl border border-slate-800">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-slate-900/90 rounded-xl border border-slate-800">
                       <button
                         type="button"
                         onClick={() => {
                           playClickSound(700);
-                          setVideoInputMode('file');
+                          setVideoInputMode('blob');
                         }}
-                        className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-mono font-medium transition-all ${
-                          videoInputMode === 'file'
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-mono font-medium transition-all ${
+                          videoInputMode === 'blob'
                             ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                         }`}
                       >
-                        <FileVideo className="w-3.5 h-3.5" />
-                        <span>1. Local File</span>
+                        <Cloud className="w-3.5 h-3.5" />
+                        <span>1. Vercel Blob</span>
                       </button>
 
                       <button
@@ -1342,14 +1363,30 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                           playClickSound(700);
                           setVideoInputMode('url');
                         }}
-                        className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-mono font-medium transition-all ${
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-mono font-medium transition-all ${
                           videoInputMode === 'url'
                             ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                         }`}
                       >
                         <Link className="w-3.5 h-3.5" />
-                        <span>2. Global Video URL</span>
+                        <span>2. Stream URL</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playClickSound(700);
+                          setVideoInputMode('file');
+                        }}
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-mono font-medium transition-all ${
+                          videoInputMode === 'file'
+                            ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                        }`}
+                      >
+                        <FileVideo className="w-3.5 h-3.5" />
+                        <span>3. Local File</span>
                       </button>
 
                       <button
@@ -1358,16 +1395,213 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                           playClickSound(700);
                           setVideoInputMode('github');
                         }}
-                        className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-mono font-medium transition-all ${
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-mono font-medium transition-all ${
                           videoInputMode === 'github'
                             ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                         }`}
                       >
                         <GitBranch className="w-3.5 h-3.5" />
-                        <span>3. GitHub Repo Sync</span>
+                        <span>4. GitHub Repo</span>
                       </button>
                     </div>
+
+                    {/* Mode 1: Vercel Blob Storage Mode (Cloud Cross-Device Sync) */}
+                    {videoInputMode === 'blob' && (
+                      <div className="space-y-4">
+                        <div className="p-3.5 bg-sky-950/40 border border-sky-500/40 rounded-xl space-y-1.5 text-xs text-sky-200">
+                          <div className="flex items-center justify-between">
+                            <p className="font-semibold text-sky-300 flex items-center gap-1.5">
+                              <Cloud className="w-4 h-4 text-sky-400" />
+                              <span>Vercel Blob Storage (Cross-Device Cloud Sync):</span>
+                            </p>
+                            {blobStatus?.configured ? (
+                              <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] rounded-full font-mono flex items-center gap-1">
+                                <Check className="w-3 h-3 text-emerald-400" /> Cloud Store Ready
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] rounded-full font-mono">
+                                Token Setup Available
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] leading-relaxed text-sky-200/90">
+                            Upload your MP4 video directly to <strong>Vercel Blob Storage</strong>. It is stored in the global cloud and automatically streams on <strong>every mobile device, PC, and visitor on Vercel</strong>!
+                          </p>
+                        </div>
+
+                        {/* Drag & Drop / Upload Card for Vercel Blob */}
+                        <div className="p-6 bg-slate-900/80 border border-dashed border-sky-500/40 hover:border-sky-400 rounded-2xl flex flex-col items-center justify-center text-center space-y-4 transition-colors">
+                          <input
+                            type="file"
+                            id="admin-blob-video-input"
+                            accept="video/mp4,video/webm,video/ogg,video/quicktime"
+                            className="hidden"
+                            onChange={async (e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                const file = e.target.files[0];
+                                playClickSound(800);
+                                setIsBlobUploading(true);
+                                setBlobUploadProgress(0);
+
+                                try {
+                                  const result = await uploadVideoToVercelBlob(file, (percent) => {
+                                    setBlobUploadProgress(percent);
+                                  });
+
+                                  setVercelBlobVideo({
+                                    url: result.url,
+                                    pathname: result.pathname,
+                                  });
+
+                                  setVideoDisabledPreference(false);
+                                  setIsVideoDisabled(false);
+                                  window.dispatchEvent(new Event('portfolio-video-updated'));
+                                  const active = await resolveActiveHeroVideo(data.personalInfo?.heroVideoUrl);
+                                  setActiveResolvedVideo(active);
+
+                                  setAuthMsg({
+                                    type: 'success',
+                                    text: `Success! Video uploaded to Vercel Blob (${result.url.split('/').pop()}) and synced across all devices.`,
+                                  });
+                                } catch (err: any) {
+                                  console.error('Blob upload error:', err);
+                                  setAuthMsg({
+                                    type: 'error',
+                                    text: err.message || 'Failed to upload to Vercel Blob. Please ensure BLOB_READ_WRITE_TOKEN is connected.',
+                                  });
+                                } finally {
+                                  setIsBlobUploading(false);
+                                  setBlobUploadProgress(null);
+                                }
+                              }
+                            }}
+                          />
+
+                          {vercelBlobVideo?.url ? (
+                            <div className="w-full space-y-3">
+                              <div className="relative w-full max-h-56 rounded-xl overflow-hidden border border-slate-800 bg-black flex items-center justify-center">
+                                <video
+                                  src={vercelBlobVideo.url}
+                                  autoPlay
+                                  loop
+                                  muted
+                                  controls
+                                  playsInline
+                                  className="w-full max-h-56 object-contain"
+                                />
+                              </div>
+                              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs font-mono text-slate-300">
+                                <span className="text-emerald-400 font-bold truncate">
+                                  ✓ Active Cloud Video: {vercelBlobVideo.pathname || 'hero-intro.mp4'}
+                                </span>
+                                <label
+                                  htmlFor="admin-blob-video-input"
+                                  className="px-3 py-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded-lg font-bold cursor-pointer transition-all"
+                                >
+                                  Upload New Video to Vercel Blob
+                                </label>
+                              </div>
+                            </div>
+                          ) : isBlobUploading ? (
+                            <div className="w-full max-w-md space-y-3 py-4">
+                              <div className="w-12 h-12 mx-auto rounded-2xl bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-sky-400 animate-pulse">
+                                <CloudUpload className="w-6 h-6 animate-bounce" />
+                              </div>
+                              <div className="text-xs font-mono text-sky-300 font-semibold">
+                                Uploading to Vercel Blob Storage... {blobUploadProgress !== null ? `${blobUploadProgress}%` : ''}
+                              </div>
+                              <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden border border-slate-800">
+                                <div
+                                  className="bg-sky-500 h-2.5 rounded-full transition-all duration-300 ease-out shadow-lg shadow-sky-500/50"
+                                  style={{ width: `${blobUploadProgress ?? 10}%` }}
+                                />
+                              </div>
+                              <p className="text-[11px] text-slate-400">
+                                Streaming file directly to Vercel global CDN...
+                              </p>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="w-14 h-14 rounded-2xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400 shadow-inner">
+                                <CloudUpload className="w-7 h-7" />
+                              </div>
+                              <div className="space-y-1">
+                                <label
+                                  htmlFor="admin-blob-video-input"
+                                  className="px-4 py-2.5 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs font-mono rounded-xl cursor-pointer inline-flex items-center gap-2 transition-all shadow-md"
+                                >
+                                  <CloudUpload className="w-4 h-4" />
+                                  <span>Select Video to Upload to Vercel Blob</span>
+                                </label>
+                                <p className="text-[11px] text-slate-400">
+                                  Supports MP4, WebM, QuickTime MOV (Up to 250 MB)
+                                </p>
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Actions for Vercel Blob Video */}
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {vercelBlobVideo?.url && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                playClickSound(600);
+                                const targetUrl = vercelBlobVideo.url;
+                                await deleteVercelBlobVideo(targetUrl);
+                                setVercelBlobVideo(null);
+                                window.dispatchEvent(new Event('portfolio-video-updated'));
+                                const newActive = await resolveActiveHeroVideo(data.personalInfo?.heroVideoUrl);
+                                setActiveResolvedVideo(newActive);
+                                setAuthMsg({
+                                  type: 'success',
+                                  text: 'Cloud video removed from Vercel Blob and reset across all devices.',
+                                });
+                              }}
+                              className="flex-1 py-2.5 px-3 bg-slate-900 hover:bg-rose-950/80 border border-slate-800 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 text-xs font-mono rounded-xl transition-all flex items-center justify-center gap-2"
+                            >
+                              <Trash2 className="w-4 h-4 text-rose-400" />
+                              <span>Delete Video from Vercel Blob</span>
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              playClickSound(700);
+                              const blob = await getActiveVercelBlobVideo();
+                              setVercelBlobVideo(blob);
+                              const st = await checkVercelBlobStatus();
+                              setBlobStatus(st);
+                              const active = await resolveActiveHeroVideo(data.personalInfo?.heroVideoUrl);
+                              setActiveResolvedVideo(active);
+                              setAuthMsg({
+                                type: 'info',
+                                text: blob?.url
+                                  ? 'Refreshed! Active Vercel Blob cloud video is connected.'
+                                  : 'Checked Vercel Blob: Ready for your next upload.',
+                              });
+                            }}
+                            className="py-2.5 px-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-sky-300 text-xs font-mono rounded-xl transition-all flex items-center justify-center gap-1.5"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Check / Refresh Vercel Blob</span>
+                          </button>
+                        </div>
+
+                        {/* Quick Connection Guide */}
+                        <div className="p-3.5 bg-slate-900/60 border border-slate-800 rounded-xl text-[11px] text-slate-400 space-y-1 font-mono">
+                          <span className="text-slate-200 font-semibold block">
+                            💡 Linking Vercel Blob on Vercel Dashboard (1-click):
+                          </span>
+                          <span>
+                            On <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer" className="text-sky-400 underline">vercel.com</a> &rarr; Your Project &rarr; <strong>Storage</strong> tab &rarr; Click <strong>Create Database</strong> &rarr; Select <strong>Blob</strong>. Vercel automatically configures the environment token for you!
+                          </span>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Option 1: Local File Browse / Replace Mode */}
                     {videoInputMode === 'file' && (
