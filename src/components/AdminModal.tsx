@@ -1590,16 +1590,6 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                             <span>Check / Refresh Vercel Blob</span>
                           </button>
                         </div>
-
-                        {/* Quick Connection Guide */}
-                        <div className="p-3.5 bg-slate-900/60 border border-slate-800 rounded-xl text-[11px] text-slate-400 space-y-1 font-mono">
-                          <span className="text-slate-200 font-semibold block">
-                            💡 Linking Vercel Blob on Vercel Dashboard (1-click):
-                          </span>
-                          <span>
-                            On <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer" className="text-sky-400 underline">vercel.com</a> &rarr; Your Project &rarr; <strong>Storage</strong> tab &rarr; Click <strong>Create Database</strong> &rarr; Select <strong>Blob</strong>. Vercel automatically configures the environment token for you!
-                          </span>
-                        </div>
                       </div>
                     )}
 
