@@ -1,0 +1,33 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/chat",
+      "destination": "/api/chat"
+    },
+    {
+      "source": "/api/auth/verify-owner",
+      "destination": "/api/verify-owner"
+    },
+    {
+      "source": "/api/verify-owner",
+      "destination": "/api/verify-owner"
+    },
+    {
+      "source": "/api/auth/change-password",
+      "destination": "/api/change-password"
+    },
+    {
+      "source": "/api/change-password",
+      "destination": "/api/change-password"
+    },
+    {
+      "source": "/api/github-contributions",
+      "destination": "/api/github-contributions"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

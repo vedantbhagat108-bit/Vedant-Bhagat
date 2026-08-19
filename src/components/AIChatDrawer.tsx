@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Bot, X, Send, Sparkles, User, RefreshCw } from 'lucide-react';
 import { ChatMessage } from '../types';
 import { playClickSound } from '../utils/audio';
+import { getSmartLocalResponse } from '../utils/aiKnowledge';
 
 interface AIChatDrawerProps {
   isOpen: boolean;
@@ -65,20 +66,31 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({ isOpen, onClose }) =
         }),
       });
 
+      if (!response.ok) {
+        throw new Error(`Server returned status ${response.status}`);
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('Non-JSON response (static Vercel hosting)');
+      }
+
       const data = await response.json();
       const botMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         sender: 'bot',
-        text: data.reply || 'Vedant is an IT undergraduate at DTU with 8.83 CGPA and 200+ LeetCode solved!',
+        text: data.reply || getSmartLocalResponse(textToSend),
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
       setMessages((prev) => [...prev, botMsg]);
     } catch (err) {
+      // Offline / Serverless fallback: Use rich local intelligence
+      const fallbackReply = getSmartLocalResponse(textToSend);
       const botMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         sender: 'bot',
-        text: "Cosmo AI: Vedant Bhagat is an IT undergraduate at DTU (8.83 CGPA) proficient in C++, Python, DSA (200+ LeetCode), Streamlit, Gemini API, and Pygame!",
+        text: fallbackReply,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, botMsg]);
