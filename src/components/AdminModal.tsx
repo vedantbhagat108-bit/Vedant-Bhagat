@@ -104,6 +104,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
   const [projectsList, setProjectsList] = useState(data.projects);
   const [skillsList, setSkillsList] = useState<SkillCategory[]>(data.skillCategories || []);
   const [certificationsList, setCertificationsList] = useState<Certification[]>(data.certifications || []);
+  const [heroVideoUrlInput, setHeroVideoUrlInput] = useState(data.personalInfo.heroVideoUrl || '');
 
   // Password Change Form State
   const [passForm, setPassForm] = useState({
@@ -1215,17 +1216,99 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
 
                 {/* Tab 6: Hero Video Management */}
                 {activeTab === 'video' && (
-                  <div className="space-y-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                      <Film className="w-4 h-4 text-sky-400" />
-                      <span>Hero Intro Video Management</span>
-                    </h3>
+                  <div className="space-y-5 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        <Film className="w-4 h-4 text-sky-400" />
+                        <span>Hero Intro Video Management</span>
+                      </h3>
+                    </div>
 
-                    <p className="text-xs text-slate-300 leading-relaxed">
-                      Upload or replace your personal intro video displayed in the first section of your space portfolio.
-                    </p>
+                    <div className="p-3 bg-sky-950/40 border border-sky-500/30 rounded-xl space-y-1.5 text-xs text-sky-200">
+                      <p className="font-semibold text-white flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                        <span>How to make video show on ALL devices (Mobile, Laptop, Vercel):</span>
+                      </p>
+                      <p className="text-[11px] leading-relaxed text-sky-200/90">
+                        Local file uploads only stay inside your current browser&apos;s memory. To make your video visible to <strong>anyone opening your portfolio on any phone, tablet, or PC</strong>, paste a public direct video link (e.g. from Cloudinary, Imgur, Supabase, GitHub raw MP4, or public MP4/WEBM URL) below.
+                      </p>
+                    </div>
 
-                    <div className="p-4 bg-slate-900/80 rounded-xl border border-slate-700 flex flex-col items-center justify-center text-center space-y-3">
+                    {/* Method A: Public Global Video URL */}
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        playClickSound(800);
+                        updatePortfolioData({
+                          personalInfo: {
+                            ...data.personalInfo,
+                            heroVideoUrl: heroVideoUrlInput.trim(),
+                          },
+                        });
+                        window.dispatchEvent(new Event('portfolio-video-updated'));
+                        setAuthMsg({
+                          type: 'success',
+                          text: heroVideoUrlInput.trim()
+                            ? 'Global Video URL saved! Video will now stream on all devices.'
+                            : 'Global Video URL cleared.',
+                        });
+                      }}
+                      className="p-4 bg-slate-900/80 rounded-xl border border-slate-700 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-mono text-cyan-300 font-bold">
+                          Option 1: Direct Video Stream URL (Recommended for All Devices)
+                        </label>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <input
+                          type="url"
+                          placeholder="https://res.cloudinary.com/.../video.mp4 or https://raw.githubusercontent.com/.../intro.mp4"
+                          value={heroVideoUrlInput}
+                          onChange={(e) => setHeroVideoUrlInput(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-sky-400 font-mono"
+                        />
+                        <p className="text-[11px] text-slate-400">
+                          Supports direct MP4, WebM, Cloudinary, GitHub raw video links, or AWS S3 links.
+                        </p>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="submit"
+                          className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs font-mono rounded-xl transition-all shadow-md shadow-sky-950/40"
+                        >
+                          Save Global Video URL
+                        </button>
+                        {heroVideoUrlInput && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setHeroVideoUrlInput('');
+                              updatePortfolioData({
+                                personalInfo: {
+                                  ...data.personalInfo,
+                                  heroVideoUrl: '',
+                                },
+                              });
+                              window.dispatchEvent(new Event('portfolio-video-updated'));
+                              setAuthMsg({ type: 'success', text: 'Global Video URL cleared.' });
+                            }}
+                            className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono rounded-xl transition-all"
+                          >
+                            Clear URL
+                          </button>
+                        )}
+                      </div>
+                    </form>
+
+                    {/* Method B: Local Browser Upload */}
+                    <div className="p-4 bg-slate-900/60 rounded-xl border border-slate-800 space-y-3">
+                      <label className="block text-xs font-mono text-slate-300 font-bold">
+                        Option 2: Upload Local Video File (Current Device Only)
+                      </label>
+
                       <input
                         type="file"
                         id="admin-video-upload"
@@ -1237,18 +1320,18 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                             playClickSound(800);
                             await saveVideoFile(file);
                             window.dispatchEvent(new Event('portfolio-video-updated'));
-                            setAuthMsg({ type: 'success', text: `Successfully uploaded ${file.name}! Video is now active in the hero section.` });
+                            setAuthMsg({ type: 'success', text: `Successfully saved ${file.name} to local browser storage!` });
                           }
                         }}
                       />
 
-                      <div className="flex flex-wrap items-center justify-center gap-3">
+                      <div className="flex flex-wrap items-center gap-3">
                         <label
                           htmlFor="admin-video-upload"
-                          className="px-4 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs font-mono rounded-xl cursor-pointer flex items-center gap-2 transition-all shadow-md"
+                          className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white font-bold text-xs font-mono rounded-xl cursor-pointer flex items-center gap-2 transition-all shadow-md"
                         >
                           <Upload className="w-4 h-4" />
-                          <span>Upload / Change Video (.mp4 / .webm)</span>
+                          <span>Select Video File (.mp4 / .webm)</span>
                         </label>
 
                         <button
@@ -1257,12 +1340,12 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                             playClickSound(600);
                             await deleteSavedVideo();
                             window.dispatchEvent(new Event('portfolio-video-updated'));
-                            setAuthMsg({ type: 'success', text: 'Custom video removed. Reset to default holographic cosmic portal.' });
+                            setAuthMsg({ type: 'success', text: 'Custom local video cleared.' });
                           }}
                           className="px-4 py-2.5 bg-slate-800 hover:bg-rose-950/80 border border-slate-700 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 text-xs font-mono rounded-xl transition-all"
                         >
                           <Trash2 className="w-4 h-4" />
-                          <span>Delete / Clear Video</span>
+                          <span>Delete Local Video</span>
                         </button>
                       </div>
                     </div>

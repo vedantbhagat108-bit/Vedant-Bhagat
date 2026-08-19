@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { loadSavedVideo } from '../utils/videoStorage';
 import { playClickSound } from '../utils/audio';
+import { usePortfolio } from '../context/PortfolioContext';
 
 interface HeroVideoPortalProps {
   onVortexTrigger?: () => void;
@@ -22,9 +23,10 @@ interface HeroVideoPortalProps {
 }
 
 export const HeroVideoPortal: React.FC<HeroVideoPortalProps> = ({ onVortexTrigger, className = '' }) => {
+  const { data } = usePortfolio();
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [isMuted, setIsMuted] = useState<boolean>(true);
   const [scrollProgress, setScrollProgress] = useState<number>(0);
   const [isManualVortexing, setIsManualVortexing] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
@@ -34,6 +36,12 @@ export const HeroVideoPortal: React.FC<HeroVideoPortalProps> = ({ onVortexTrigge
   const canvasPlaceholderRef = useRef<HTMLCanvasElement | null>(null);
 
   const loadVideo = () => {
+    const contextVideoUrl = data.personalInfo?.heroVideoUrl?.trim();
+    if (contextVideoUrl) {
+      setVideoSrc(contextVideoUrl);
+      return;
+    }
+
     loadSavedVideo().then((url) => {
       if (url) {
         setVideoSrc(url);
@@ -55,7 +63,7 @@ export const HeroVideoPortal: React.FC<HeroVideoPortalProps> = ({ onVortexTrigge
     return () => {
       window.removeEventListener('portfolio-video-updated', handleVideoUpdate);
     };
-  }, []);
+  }, [data.personalInfo?.heroVideoUrl]);
 
   // Track fullscreen state change
   useEffect(() => {

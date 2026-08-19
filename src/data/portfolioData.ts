@@ -13,6 +13,7 @@ export const PERSONAL_INFO = {
   dtuRoll: '2K24/IT/188',
   github: 'https://github.com/vedantbhagat108-bit',
   leetcode: 'https://leetcode.com/u/Vedant1205/',
+  heroVideoUrl: '',
   bio: 'IT undergraduate at Delhi Technological University (DTU) with hands-on project experience in Python, APIs, and game development. Strong Data Structures & Algorithms foundation (200+ LeetCode problems) and a passion for building scalable backend systems and intelligent AI solutions.',
 };
 
