@@ -181,17 +181,23 @@ Always respond enthusiastically, professionally, and concisely in a space/cosmic
     });
   });
 
-  // In-memory active blob cache (falls back to list() if token configured)
+  // In-memory active blob cache (falls back to list() if valid token configured)
   let activeBlobVideo: { url: string; pathname: string; size?: number; uploadedAt: string } | null = null;
+
+  const isValidBlobToken = (token?: string): boolean => {
+    if (!token || typeof token !== 'string') return false;
+    const trimmed = token.trim();
+    return trimmed.length > 20 && !trimmed.startsWith('MY_') && !trimmed.includes('your_token');
+  };
 
   // Vercel Blob Status Check
   app.get('/api/blob/status', (_req, res) => {
-    const isConfigured = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+    const isConfigured = isValidBlobToken(process.env.BLOB_READ_WRITE_TOKEN);
     res.json({
       configured: isConfigured,
       message: isConfigured
         ? 'Vercel Blob Storage is connected and ready for cross-device synchronization.'
-        : 'BLOB_READ_WRITE_TOKEN environment variable not set. Please connect a Blob Store in Vercel Storage settings.',
+        : 'BLOB_READ_WRITE_TOKEN is not configured yet. Connect Blob Store in Vercel settings to enable global sync.',
     });
   });
 
@@ -202,12 +208,11 @@ Always respond enthusiastically, professionally, and concisely in a space/cosmic
         return res.json(activeBlobVideo);
       }
 
-      // If token is configured, check blobs in store
-      if (process.env.BLOB_READ_WRITE_TOKEN) {
+      const token = process.env.BLOB_READ_WRITE_TOKEN;
+      if (isValidBlobToken(token)) {
         const { list } = await import('@vercel/blob');
-        const response = await list({ prefix: 'hero-videos/', limit: 5 });
-        if (response.blobs && response.blobs.length > 0) {
-          // Sort by uploadedAt descending
+        const response = await list({ prefix: 'hero-videos/', limit: 5, token: token! }).catch(() => null);
+        if (response && response.blobs && response.blobs.length > 0) {
           const latest = response.blobs.sort(
             (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
           )[0];
@@ -222,8 +227,7 @@ Always respond enthusiastically, professionally, and concisely in a space/cosmic
       }
 
       return res.json({ url: null });
-    } catch (err) {
-      console.warn('Error fetching active blob video:', err);
+    } catch {
       return res.json({ url: null });
     }
   });
@@ -231,9 +235,10 @@ Always respond enthusiastically, professionally, and concisely in a space/cosmic
   // Client-side direct stream token generation via handleUpload
   app.post('/api/blob-upload', async (req, res) => {
     try {
-      if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      const token = process.env.BLOB_READ_WRITE_TOKEN;
+      if (!isValidBlobToken(token)) {
         return res.status(400).json({
-          error: 'Vercel Blob storage is not connected. Add BLOB_READ_WRITE_TOKEN to your environment variables.',
+          error: 'Vercel Blob storage is not connected. Please connect a Blob Store in Vercel Storage settings.',
         });
       }
 
@@ -254,13 +259,11 @@ Always respond enthusiastically, professionally, and concisely in a space/cosmic
             pathname: blob.pathname,
             uploadedAt: new Date().toISOString(),
           };
-          console.log('Vercel Blob upload completed:', blob.url);
         },
       });
 
       return res.json(jsonResponse);
     } catch (error: any) {
-      console.error('Error handling blob upload:', error);
       return res.status(400).json({ error: error.message || 'Failed to handle blob upload' });
     }
   });

@@ -38,8 +38,7 @@ export async function getActiveVercelBlobVideo(): Promise<VercelBlobVideoInfo | 
       return data;
     }
     return null;
-  } catch (err) {
-    console.warn('Could not fetch active Vercel Blob video:', err);
+  } catch {
     return null;
   }
 }
