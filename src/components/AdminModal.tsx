@@ -131,20 +131,15 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
   const [skillsList, setSkillsList] = useState<SkillCategory[]>(data.skillCategories || []);
   const [certificationsList, setCertificationsList] = useState<Certification[]>(data.certifications || []);
   const [heroVideoUrlInput, setHeroVideoUrlInput] = useState(data.personalInfo.heroVideoUrl || '');
-  const [videoInputMode, setVideoInputMode] = useState<'server' | 'blob' | 'url' | 'file' | 'github'>('server');
+  const [videoInputMode, setVideoInputMode] = useState<'local' | 'url' | 'blob'>('local');
   const [serverVideo, setServerVideo] = useState<{ exists: boolean; url: string | null; size?: number } | null>(null);
   const [isServerUploading, setIsServerUploading] = useState<boolean>(false);
   const [vercelBlobVideo, setVercelBlobVideo] = useState<VercelBlobVideoInfo | null>(null);
   const [blobUploadProgress, setBlobUploadProgress] = useState<number | null>(null);
   const [isBlobUploading, setIsBlobUploading] = useState<boolean>(false);
   const [blobStatus, setBlobStatus] = useState<{ configured: boolean; message?: string } | null>(null);
-  const [localVideoName, setLocalVideoName] = useState<string>('');
-  const [localVideoPreviewUrl, setLocalVideoPreviewUrl] = useState<string>('');
-  const [detectedRepoVideo, setDetectedRepoVideo] = useState<string | null>(null);
   const [activeResolvedVideo, setActiveResolvedVideo] = useState<string | null>(null);
   const [isVideoDisabled, setIsVideoDisabled] = useState<boolean>(false);
-  const [isUploadingVideo, setIsUploadingVideo] = useState<boolean>(false);
-  const [isScanningRepo, setIsScanningRepo] = useState<boolean>(false);
 
   // Load existing saved video info on tab switch or open
   React.useEffect(() => {
@@ -157,19 +152,6 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
       });
       checkVercelBlobStatus().then((st) => {
         setBlobStatus(st);
-      });
-      loadSavedVideo().then((url) => {
-        if (url) {
-          setLocalVideoPreviewUrl(url);
-        }
-      });
-      loadSavedVideoMetadata().then((meta) => {
-        if (meta) {
-          setLocalVideoName(`${meta.name} (${(meta.size / (1024 * 1024)).toFixed(1)} MB)`);
-        }
-      });
-      detectProjectRepoVideo().then((repoVid) => {
-        setDetectedRepoVideo(repoVid);
       });
       resolveActiveHeroVideo(data.personalInfo?.heroVideoUrl).then((active) => {
         setActiveResolvedVideo(active);
@@ -1326,62 +1308,42 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                           <div className="flex flex-col gap-1">
                             <span className="text-sky-300 font-semibold truncate">
                               {serverVideo?.exists && activeResolvedVideo === serverVideo.url
-                                ? `⚡ Server Direct Video (Live on All Devices): ${serverVideo.url} (${((serverVideo.size || 0) / (1024 * 1024)).toFixed(1)} MB)`
+                                ? `⚡ Local Server Video (Saved in Database): ${serverVideo.url} (${((serverVideo.size || 0) / (1024 * 1024)).toFixed(1)} MB)`
                                 : vercelBlobVideo?.url && activeResolvedVideo === vercelBlobVideo.url
-                                ? `☁️ Vercel Blob Cloud (Multi-Device Active): ${vercelBlobVideo.pathname || vercelBlobVideo.url}`
-                                : localVideoName
-                                ? `📁 Local Upload: ${localVideoName}`
+                                ? `☁️ Vercel Blob Cloud: ${vercelBlobVideo.pathname || vercelBlobVideo.url}`
                                 : data.personalInfo?.heroVideoUrl
-                                ? `🔗 Custom URL: ${data.personalInfo.heroVideoUrl}`
-                                : detectedRepoVideo
-                                ? `🐙 GitHub Repository Video: ${detectedRepoVideo}`
+                                ? `🔗 Stream URL: ${data.personalInfo.heroVideoUrl}`
                                 : activeResolvedVideo}
                             </span>
                             {(serverVideo?.exists || vercelBlobVideo?.url || data.personalInfo?.heroVideoUrl) && (
                               <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
                                 <Check className="w-3 h-3 text-emerald-400" />
-                                Synced and streaming across all mobile and desktop devices globally
+                                Synced in database and streaming across all mobile &amp; desktop devices globally
                               </span>
                             )}
                           </div>
                         ) : (
-                          <span className="text-slate-400">No custom video or repo file detected. Cosmic canvas portal is active.</span>
+                          <span className="text-slate-400">No active video configured. Cosmic 3D Starfield portal is active.</span>
                         )}
                       </div>
                     </div>
 
-                    {/* Mode Segmented Selector */}
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1 bg-slate-900/90 rounded-xl border border-slate-800">
+                    {/* Mode Segmented Selector - 3 Clean Options */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 p-1 bg-slate-900/90 rounded-xl border border-slate-800">
                       <button
                         type="button"
                         onClick={() => {
                           playClickSound(700);
-                          setVideoInputMode('server');
+                          setVideoInputMode('local');
                         }}
-                        className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-mono font-medium transition-all ${
-                          videoInputMode === 'server'
+                        className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg text-xs font-mono font-medium transition-all ${
+                          videoInputMode === 'local'
                             ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                         }`}
                       >
                         <Zap className="w-3.5 h-3.5" />
-                        <span>1. Server Direct</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          playClickSound(700);
-                          setVideoInputMode('blob');
-                        }}
-                        className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-mono font-medium transition-all ${
-                          videoInputMode === 'blob'
-                            ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
-                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-                        }`}
-                      >
-                        <Cloud className="w-3.5 h-3.5" />
-                        <span>2. Vercel Blob</span>
+                        <span>1. Local Video File</span>
                       </button>
 
                       <button
@@ -1390,68 +1352,52 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                           playClickSound(700);
                           setVideoInputMode('url');
                         }}
-                        className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-mono font-medium transition-all ${
+                        className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg text-xs font-mono font-medium transition-all ${
                           videoInputMode === 'url'
                             ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                         }`}
                       >
                         <Link className="w-3.5 h-3.5" />
-                        <span>3. Stream URL</span>
+                        <span>2. Stream URL</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => {
                           playClickSound(700);
-                          setVideoInputMode('file');
+                          setVideoInputMode('blob');
                         }}
-                        className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-mono font-medium transition-all ${
-                          videoInputMode === 'file'
+                        className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg text-xs font-mono font-medium transition-all ${
+                          videoInputMode === 'blob'
                             ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                         }`}
                       >
-                        <FileVideo className="w-3.5 h-3.5" />
-                        <span>4. Local File</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          playClickSound(700);
-                          setVideoInputMode('github');
-                        }}
-                        className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-mono font-medium transition-all ${
-                          videoInputMode === 'github'
-                            ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-950/50'
-                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-                        }`}
-                      >
-                        <GitBranch className="w-3.5 h-3.5" />
-                        <span>5. GitHub Repo</span>
+                        <Cloud className="w-3.5 h-3.5" />
+                        <span>3. Vercel Blob</span>
                       </button>
                     </div>
 
-                    {/* Mode 1: Server Direct Storage Mode (Guaranteed Cross-Device Sync) */}
-                    {videoInputMode === 'server' && (
+                    {/* Option 1: Local Video File (Saved into Database & Server Storage) */}
+                    {videoInputMode === 'local' && (
                       <div className="space-y-4">
                         <div className="p-3.5 bg-emerald-950/40 border border-emerald-500/40 rounded-xl space-y-1.5 text-xs text-emerald-200">
                           <div className="flex items-center justify-between">
                             <p className="font-semibold text-emerald-300 flex items-center gap-1.5">
                               <Zap className="w-4 h-4 text-emerald-400" />
-                              <span>Direct Server Video Storage (Instant Cross-Device Sync):</span>
+                              <span>Local Video File (Saved to Database &amp; Synced):</span>
                             </p>
                             <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] rounded-full font-mono flex items-center gap-1">
-                              <Check className="w-3 h-3 text-emerald-400" /> No Token Required
+                              <Check className="w-3 h-3 text-emerald-400" /> Cross-Device Ready
                             </span>
                           </div>
                           <p className="text-[11px] leading-relaxed text-emerald-200/90">
-                            Upload your MP4 video directly to the server. It is saved to <strong>/hero-video.mp4</strong> and automatically streams on <strong>every mobile device, desktop, and visitor instantly</strong>!
+                            Upload your MP4 video directly from your device. It is saved in the backend database as <strong>/hero-video.mp4</strong> and streams automatically to all visitors across mobile and desktop devices.
                           </p>
                         </div>
 
-                        {/* Drag & Drop / Upload Card for Server Direct */}
+                        {/* Drag & Drop / Upload Card for Local File */}
                         <div className="p-6 bg-slate-900/80 border border-dashed border-emerald-500/40 hover:border-emerald-400 rounded-2xl flex flex-col items-center justify-center text-center space-y-4 transition-colors">
                           <input
                             type="file"
@@ -1465,24 +1411,33 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                                 setIsServerUploading(true);
 
                                 try {
-                                  const result = await uploadDirectServerVideo(file);
+                                  await uploadDirectServerVideo(file);
                                   const srv = await getCurrentServerVideo();
                                   setServerVideo(srv);
                                   setVideoDisabledPreference(false);
                                   setIsVideoDisabled(false);
+                                  
+                                  // Update context data
+                                  updatePortfolioData({
+                                    personalInfo: {
+                                      ...data.personalInfo,
+                                      heroVideoUrl: '/hero-video.mp4',
+                                    },
+                                  });
+
                                   window.dispatchEvent(new Event('portfolio-video-updated'));
-                                  const active = await resolveActiveHeroVideo(data.personalInfo?.heroVideoUrl);
+                                  const active = await resolveActiveHeroVideo('/hero-video.mp4');
                                   setActiveResolvedVideo(active);
 
                                   setAuthMsg({
                                     type: 'success',
-                                    text: `Success! Video uploaded and saved as /hero-video.mp4. Synced across all devices!`,
+                                    text: `Success! Video uploaded and saved in database as /hero-video.mp4. Synced across all devices!`,
                                   });
                                 } catch (err: any) {
                                   console.error('Server video upload error:', err);
                                   setAuthMsg({
                                     type: 'error',
-                                    text: err.message || 'Failed to upload video to server.',
+                                    text: err.message || 'Failed to upload video to database.',
                                   });
                                 } finally {
                                   setIsServerUploading(false);
@@ -1506,13 +1461,13 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                               </div>
                               <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs font-mono text-slate-300">
                                 <span className="text-emerald-400 font-bold truncate">
-                                  ✓ Live Server Video: {serverVideo.url} ({((serverVideo.size || 0) / (1024 * 1024)).toFixed(1)} MB)
+                                  ✓ Saved in Database: {serverVideo.url} ({((serverVideo.size || 0) / (1024 * 1024)).toFixed(1)} MB)
                                 </span>
                                 <label
                                   htmlFor="admin-server-video-input"
                                   className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-lg font-bold cursor-pointer transition-all"
                                 >
-                                  Replace Server Video
+                                  Replace Video File
                                 </label>
                               </div>
                             </div>
@@ -1522,7 +1477,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                                 <Zap className="w-6 h-6 animate-bounce" />
                               </div>
                               <div className="text-xs font-mono text-emerald-300 font-semibold">
-                                Uploading and saving video to server storage...
+                                Uploading and saving video to backend database...
                               </div>
                               <p className="text-[11px] text-slate-400">
                                 Streaming and writing directly to server storage for global cross-device access...
@@ -1539,7 +1494,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                                   className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs font-mono rounded-xl cursor-pointer inline-flex items-center gap-2 transition-all shadow-md"
                                 >
                                   <Upload className="w-4 h-4" />
-                                  <span>Select Video to Upload to Server (Cross-Device)</span>
+                                  <span>Select Video to Save in Database</span>
                                 </label>
                                 <p className="text-[11px] text-slate-400">
                                   Supports MP4, WebM, QuickTime MOV (Up to 250 MB)
@@ -1549,7 +1504,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                           )}
                         </div>
 
-                        {/* Actions for Server Video */}
+                        {/* Actions for Local File */}
                         <div className="flex flex-wrap gap-2 pt-1">
                           {serverVideo?.exists && (
                             <button
@@ -1558,18 +1513,24 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                                 playClickSound(600);
                                 await deleteCurrentServerVideo();
                                 setServerVideo({ exists: false, url: null });
+                                updatePortfolioData({
+                                  personalInfo: {
+                                    ...data.personalInfo,
+                                    heroVideoUrl: '',
+                                  },
+                                });
                                 window.dispatchEvent(new Event('portfolio-video-updated'));
-                                const newActive = await resolveActiveHeroVideo(data.personalInfo?.heroVideoUrl);
+                                const newActive = await resolveActiveHeroVideo('');
                                 setActiveResolvedVideo(newActive);
                                 setAuthMsg({
                                   type: 'success',
-                                  text: 'Server video deleted and reset across all devices.',
+                                  text: 'Server video deleted and removed from database.',
                                 });
                               }}
                               className="flex-1 py-2.5 px-3 bg-slate-900 hover:bg-rose-950/80 border border-slate-800 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 text-xs font-mono rounded-xl transition-all flex items-center justify-center gap-2"
                             >
                               <Trash2 className="w-4 h-4 text-rose-400" />
-                              <span>Delete Server Video</span>
+                              <span>Delete Video from Database</span>
                             </button>
                           )}
 
@@ -1583,26 +1544,168 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                               setActiveResolvedVideo(active);
                               setAuthMsg({
                                 type: 'info',
-                                text: srv.exists ? 'Refreshed! Server video is live and active.' : 'Refreshed. No server video present.',
+                                text: srv.exists ? 'Refreshed! Server video is saved and active in database.' : 'Refreshed. No server video saved currently.',
                               });
                             }}
                             className="py-2.5 px-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-emerald-300 text-xs font-mono rounded-xl transition-all flex items-center justify-center gap-1.5"
                           >
                             <RotateCcw className="w-3.5 h-3.5" />
-                            <span>Check Server Video Status</span>
+                            <span>Check Status</span>
                           </button>
                         </div>
                       </div>
                     )}
 
-                    {/* Mode 1: Vercel Blob Storage Mode (Cloud Cross-Device Sync) */}
+                    {/* Option 2: Stream URL Mode */}
+                    {videoInputMode === 'url' && (
+                      <div className="space-y-4">
+                        <div className="p-3.5 bg-sky-950/30 border border-sky-500/30 rounded-xl space-y-1 text-xs text-sky-200">
+                          <p className="font-semibold text-sky-300 flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                            <span>Direct Video Stream URL (Cloudinary / GitHub / S3):</span>
+                          </p>
+                          <p className="text-[11px] leading-relaxed text-sky-200/80">
+                            A direct video link saved in the database streams immediately to any phone, laptop, or visitor viewing your portfolio.
+                          </p>
+                        </div>
+
+                        <form
+                          onSubmit={async (e) => {
+                            e.preventDefault();
+                            playClickSound(800);
+                            setVideoDisabledPreference(false);
+                            setIsVideoDisabled(false);
+                            updatePortfolioData({
+                              personalInfo: {
+                                ...data.personalInfo,
+                                heroVideoUrl: heroVideoUrlInput.trim(),
+                              },
+                            });
+                            window.dispatchEvent(new Event('portfolio-video-updated'));
+                            const active = await resolveActiveHeroVideo(heroVideoUrlInput.trim());
+                            setActiveResolvedVideo(active);
+                            setAuthMsg({
+                              type: 'success',
+                              text: heroVideoUrlInput.trim()
+                                ? 'Video URL saved in database! Video is now active across all devices.'
+                                : 'Video URL cleared.',
+                            });
+                          }}
+                          className="space-y-3.5"
+                        >
+                          <div>
+                            <label className="block text-xs font-mono text-slate-300 font-medium mb-1.5">
+                              Direct Video Stream URL (.mp4 / .webm / .mov / Cloudinary / GitHub raw / S3)
+                            </label>
+                            <input
+                              type="url"
+                              placeholder="https://res.cloudinary.com/.../intro.mp4 or https://raw.githubusercontent.com/.../intro.mp4"
+                              value={heroVideoUrlInput}
+                              onChange={(e) => setHeroVideoUrlInput(e.target.value)}
+                              className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-sky-400 font-mono"
+                            />
+                          </div>
+
+                          {/* Quick Presets */}
+                          <div className="space-y-1.5">
+                            <span className="text-[11px] font-mono text-slate-400 block">
+                              Or select a cosmic preset video:
+                            </span>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  playClickSound(650);
+                                  setHeroVideoUrlInput('https://assets.mixkit.co/videos/preview/mixkit-stars-in-space-1610-large.mp4');
+                                }}
+                                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-sky-500/40 rounded-lg text-[11px] text-slate-300 font-mono transition-all"
+                              >
+                                🌌 Deep Space Stars
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  playClickSound(650);
+                                  setHeroVideoUrlInput('https://assets.mixkit.co/videos/preview/mixkit-nebula-in-deep-space-3178-large.mp4');
+                                }}
+                                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-sky-500/40 rounded-lg text-[11px] text-slate-300 font-mono transition-all"
+                              >
+                                🪐 Cosmic Nebula
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Live Video Preview Box if URL entered */}
+                          {heroVideoUrlInput && (
+                            <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-700 space-y-2">
+                              <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
+                                <span>Live URL Stream Test:</span>
+                                <span className="text-emerald-400 flex items-center gap-1">
+                                  <Check className="w-3 h-3" /> Ready
+                                </span>
+                              </div>
+                              <div className="relative w-full max-h-52 rounded-lg overflow-hidden border border-slate-800 bg-black flex items-center justify-center">
+                                <video
+                                  src={heroVideoUrlInput}
+                                  autoPlay
+                                  loop
+                                  muted
+                                  playsInline
+                                  controls
+                                  className="w-full max-h-52 object-contain"
+                                  onError={() => {
+                                    setAuthMsg({
+                                      type: 'error',
+                                      text: 'Warning: This video URL could not be loaded or is blocked by CORS. Please check the link.',
+                                    });
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="submit"
+                              className="flex-1 py-2.5 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs font-mono rounded-xl transition-all shadow-lg shadow-sky-950/40 flex items-center justify-center gap-2"
+                            >
+                              <Save className="w-4 h-4" />
+                              <span>Save Video URL to Database</span>
+                            </button>
+                            {heroVideoUrlInput && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  setHeroVideoUrlInput('');
+                                  updatePortfolioData({
+                                    personalInfo: {
+                                      ...data.personalInfo,
+                                      heroVideoUrl: '',
+                                    },
+                                  });
+                                  window.dispatchEvent(new Event('portfolio-video-updated'));
+                                  const active = await resolveActiveHeroVideo('');
+                                  setActiveResolvedVideo(active);
+                                  setAuthMsg({ type: 'success', text: 'Video URL cleared from database.' });
+                                }}
+                                className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono rounded-xl transition-all"
+                              >
+                                Clear URL
+                              </button>
+                            )}
+                          </div>
+                        </form>
+                      </div>
+                    )}
+
+                    {/* Option 3: Vercel Blob Storage Mode (Cloud Cross-Device Sync) */}
                     {videoInputMode === 'blob' && (
                       <div className="space-y-4">
                         <div className="p-3.5 bg-sky-950/40 border border-sky-500/40 rounded-xl space-y-1.5 text-xs text-sky-200">
                           <div className="flex items-center justify-between">
                             <p className="font-semibold text-sky-300 flex items-center gap-1.5">
                               <Cloud className="w-4 h-4 text-sky-400" />
-                              <span>Vercel Blob Storage (Cross-Device Cloud Sync):</span>
+                              <span>Vercel Blob Storage (Cloud Video Database):</span>
                             </p>
                             {blobStatus?.configured ? (
                               <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] rounded-full font-mono flex items-center gap-1">
@@ -1615,7 +1718,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                             )}
                           </div>
                           <p className="text-[11px] leading-relaxed text-sky-200/90">
-                            Upload your MP4 video directly to <strong>Vercel Blob Storage</strong>. It is stored in the global cloud and automatically streams on <strong>every mobile device, PC, and visitor on Vercel</strong>!
+                            Upload your MP4 video directly to <strong>Vercel Blob Storage</strong>. It is stored in the cloud database and automatically streams on <strong>every mobile device, PC, and visitor on Vercel</strong>!
                           </p>
                         </div>
 
@@ -1651,7 +1754,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
 
                                   setAuthMsg({
                                     type: 'success',
-                                    text: `Success! Video uploaded to Vercel Blob (${result.url.split('/').pop()}) and synced across all devices.`,
+                                    text: `Success! Video uploaded to Vercel Blob and synced across all devices.`,
                                   });
                                 } catch (err: any) {
                                   console.error('Blob upload error:', err);
@@ -1778,454 +1881,6 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                             <RotateCcw className="w-3.5 h-3.5" />
                             <span>Check / Refresh Vercel Blob</span>
                           </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Option 1: Local File Browse / Replace Mode */}
-                    {videoInputMode === 'file' && (
-                      <div className="space-y-4">
-                        <div className="p-3.5 bg-slate-900/90 border border-sky-500/30 rounded-xl space-y-1 text-xs text-sky-200">
-                          <p className="font-semibold text-sky-300 flex items-center gap-1.5">
-                            <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-                            <span>Replace Hero Video via File Upload:</span>
-                          </p>
-                          <p className="text-[11px] leading-relaxed text-slate-300">
-                            Browsing and selecting a video below immediately replaces the current video. To share your video globally across all devices, you can also place an MP4 in your GitHub repo at <code>/public/intro.mp4</code>.
-                          </p>
-                        </div>
-
-                        <div className="p-6 bg-slate-900/80 border border-dashed border-sky-500/40 hover:border-sky-400 rounded-2xl flex flex-col items-center justify-center text-center space-y-3 transition-colors">
-                          <input
-                            type="file"
-                            id="admin-video-file-input"
-                            accept="video/mp4,video/webm,video/ogg,video/quicktime"
-                            className="hidden"
-                            onChange={async (e) => {
-                              if (e.target.files && e.target.files[0]) {
-                                const file = e.target.files[0];
-                                playClickSound(800);
-                                setIsUploadingVideo(true);
-                                const displayName = `${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)`;
-                                setLocalVideoName(displayName);
-
-                                try {
-                                  const preview = URL.createObjectURL(file);
-                                  setLocalVideoPreviewUrl(preview);
-                                  setActiveResolvedVideo(preview);
-                                  await saveVideoFile(file);
-                                  setVideoDisabledPreference(false);
-                                  setIsVideoDisabled(false);
-
-                                  // Clear conflicting URL so local video takes precedence
-                                  updatePortfolioData({
-                                    personalInfo: {
-                                      ...data.personalInfo,
-                                      heroVideoUrl: '',
-                                    },
-                                  });
-                                  setHeroVideoUrlInput('');
-                                  window.dispatchEvent(new Event('portfolio-video-updated'));
-                                  setAuthMsg({
-                                    type: 'success',
-                                    text: `Video replaced! "${file.name}" is now the active Hero video.`,
-                                  });
-                                } catch (err) {
-                                  setAuthMsg({ type: 'error', text: 'Failed to process local video file.' });
-                                } finally {
-                                  setIsUploadingVideo(false);
-                                }
-                              }
-                            }}
-                          />
-
-                          {localVideoPreviewUrl ? (
-                            <div className="w-full space-y-3">
-                              <div className="relative w-full max-h-56 rounded-xl overflow-hidden border border-slate-800 bg-black flex items-center justify-center">
-                                <video
-                                  src={localVideoPreviewUrl}
-                                  autoPlay
-                                  loop
-                                  muted
-                                  controls
-                                  playsInline
-                                  className="w-full max-h-56 object-contain"
-                                />
-                              </div>
-                              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs font-mono text-slate-300">
-                                <span className="text-emerald-400 font-bold truncate">
-                                  ✓ Active: {localVideoName || 'Uploaded Video'}
-                                </span>
-                                <label
-                                  htmlFor="admin-video-file-input"
-                                  className="px-3 py-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded-lg font-bold cursor-pointer transition-all"
-                                >
-                                  Replace with Another Video
-                                </label>
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="w-14 h-14 rounded-2xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400 shadow-inner">
-                                <Upload className="w-7 h-7" />
-                              </div>
-                              <div className="space-y-1">
-                                <label
-                                  htmlFor="admin-video-file-input"
-                                  className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs font-mono rounded-xl cursor-pointer inline-flex items-center gap-2 transition-all shadow-md"
-                                >
-                                  <FileVideo className="w-4 h-4" />
-                                  <span>{isUploadingVideo ? 'Processing Video...' : 'Browse Video from PC / Phone'}</span>
-                                </label>
-                                <p className="text-[11px] text-slate-400">
-                                  Supports MP4, WebM, QuickTime MOV (replaces current video)
-                                </p>
-                              </div>
-                            </>
-                          )}
-                        </div>
-
-                        {/* Action buttons for video deletion & reset */}
-                        <div className="flex flex-wrap gap-2 pt-1">
-                          {localVideoPreviewUrl && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                playClickSound(600);
-                                await deleteSavedVideo();
-                                setLocalVideoPreviewUrl('');
-                                setLocalVideoName('');
-                                window.dispatchEvent(new Event('portfolio-video-updated'));
-                                const newActive = await resolveActiveHeroVideo(data.personalInfo?.heroVideoUrl);
-                                setActiveResolvedVideo(newActive);
-                                setAuthMsg({
-                                  type: 'success',
-                                  text: detectedRepoVideo
-                                    ? `Custom video deleted. Reverted to GitHub repository video (${detectedRepoVideo}).`
-                                    : 'Custom video deleted. Reverted to default Cosmic Portal.',
-                                });
-                              }}
-                              className="flex-1 py-2.5 px-3 bg-slate-900 hover:bg-rose-950/80 border border-slate-800 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 text-xs font-mono rounded-xl transition-all flex items-center justify-center gap-2"
-                            >
-                              <Trash2 className="w-4 h-4 text-rose-400" />
-                              <span>Delete Uploaded Video</span>
-                            </button>
-                          )}
-
-                          {detectedRepoVideo && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                playClickSound(700);
-                                await deleteSavedVideo();
-                                setLocalVideoPreviewUrl('');
-                                setLocalVideoName('');
-                                setVideoDisabledPreference(false);
-                                setIsVideoDisabled(false);
-                                updatePortfolioData({
-                                  personalInfo: {
-                                    ...data.personalInfo,
-                                    heroVideoUrl: '',
-                                  },
-                                });
-                                setHeroVideoUrlInput('');
-                                window.dispatchEvent(new Event('portfolio-video-updated'));
-                                setActiveResolvedVideo(detectedRepoVideo);
-                                setAuthMsg({
-                                  type: 'success',
-                                  text: `Active video reset to GitHub repository file (${detectedRepoVideo})!`,
-                                });
-                              }}
-                              className="py-2.5 px-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-300 text-xs font-mono rounded-xl transition-all flex items-center justify-center gap-1.5"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                              <span>Reset to GitHub Repo Video</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Option 2: URL Mode */}
-                    {videoInputMode === 'url' && (
-                      <div className="space-y-4">
-                        <div className="p-3.5 bg-sky-950/30 border border-sky-500/30 rounded-xl space-y-1 text-xs text-sky-200">
-                          <p className="font-semibold text-sky-300 flex items-center gap-1.5">
-                            <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-                            <span>Online Video URL (Cloudinary / GitHub / S3):</span>
-                          </p>
-                          <p className="text-[11px] leading-relaxed text-sky-200/80">
-                            A direct video link streams immediately to any phone, laptop, or visitor viewing your portfolio on Vercel.
-                          </p>
-                        </div>
-
-                        <form
-                          onSubmit={async (e) => {
-                            e.preventDefault();
-                            playClickSound(800);
-                            setVideoDisabledPreference(false);
-                            setIsVideoDisabled(false);
-                            updatePortfolioData({
-                              personalInfo: {
-                                ...data.personalInfo,
-                                heroVideoUrl: heroVideoUrlInput.trim(),
-                              },
-                            });
-                            window.dispatchEvent(new Event('portfolio-video-updated'));
-                            const active = await resolveActiveHeroVideo(heroVideoUrlInput.trim());
-                            setActiveResolvedVideo(active);
-                            setAuthMsg({
-                              type: 'success',
-                              text: heroVideoUrlInput.trim()
-                                ? 'Global Video URL saved! Video is now active across all devices.'
-                                : 'Global Video URL cleared.',
-                            });
-                          }}
-                          className="space-y-3.5"
-                        >
-                          <div>
-                            <label className="block text-xs font-mono text-slate-300 font-medium mb-1.5">
-                              Direct Video Stream URL (.mp4 / .webm / .mov / Cloudinary / GitHub raw / S3)
-                            </label>
-                            <input
-                              type="url"
-                              placeholder="https://res.cloudinary.com/.../intro.mp4 or https://raw.githubusercontent.com/.../intro.mp4"
-                              value={heroVideoUrlInput}
-                              onChange={(e) => setHeroVideoUrlInput(e.target.value)}
-                              className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-sky-400 font-mono"
-                            />
-                          </div>
-
-                          {/* Quick Presets */}
-                          <div className="space-y-1.5">
-                            <span className="text-[11px] font-mono text-slate-400 block">
-                              Or select a preset video:
-                            </span>
-                            <div className="flex flex-wrap gap-2">
-                              {detectedRepoVideo && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    playClickSound(650);
-                                    setHeroVideoUrlInput(detectedRepoVideo);
-                                  }}
-                                  className="px-2.5 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/40 rounded-lg text-[11px] text-cyan-300 font-mono transition-all flex items-center gap-1"
-                                >
-                                  🐙 GitHub Repo Video ({detectedRepoVideo})
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  playClickSound(650);
-                                  setHeroVideoUrlInput('https://assets.mixkit.co/videos/preview/mixkit-stars-in-space-1610-large.mp4');
-                                }}
-                                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-sky-500/40 rounded-lg text-[11px] text-slate-300 font-mono transition-all"
-                              >
-                                🌌 Deep Space Stars
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  playClickSound(650);
-                                  setHeroVideoUrlInput('https://assets.mixkit.co/videos/preview/mixkit-nebula-in-deep-space-3178-large.mp4');
-                                }}
-                                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-sky-500/40 rounded-lg text-[11px] text-slate-300 font-mono transition-all"
-                              >
-                                🪐 Cosmic Nebula
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Live Video Preview Box if URL entered */}
-                          {heroVideoUrlInput && (
-                            <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-700 space-y-2">
-                              <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
-                                <span>Live URL Stream Test:</span>
-                                <span className="text-emerald-400 flex items-center gap-1">
-                                  <Check className="w-3 h-3" /> Ready
-                                </span>
-                              </div>
-                              <div className="relative w-full max-h-52 rounded-lg overflow-hidden border border-slate-800 bg-black flex items-center justify-center">
-                                <video
-                                  src={heroVideoUrlInput}
-                                  autoPlay
-                                  loop
-                                  muted
-                                  playsInline
-                                  controls
-                                  className="w-full max-h-52 object-contain"
-                                  onError={() => {
-                                    setAuthMsg({
-                                      type: 'error',
-                                      text: 'Warning: This video URL could not be loaded or is blocked by CORS. Please check the link.',
-                                    });
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          )}
-
-                          <div className="flex gap-2 pt-1">
-                            <button
-                              type="submit"
-                              className="flex-1 py-2.5 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs font-mono rounded-xl transition-all shadow-lg shadow-sky-950/40 flex items-center justify-center gap-2"
-                            >
-                              <Save className="w-4 h-4" />
-                              <span>Save Video URL to Portfolio</span>
-                            </button>
-                            {heroVideoUrlInput && (
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  setHeroVideoUrlInput('');
-                                  updatePortfolioData({
-                                    personalInfo: {
-                                      ...data.personalInfo,
-                                      heroVideoUrl: '',
-                                    },
-                                  });
-                                  window.dispatchEvent(new Event('portfolio-video-updated'));
-                                  const active = await resolveActiveHeroVideo('');
-                                  setActiveResolvedVideo(active);
-                                  setAuthMsg({ type: 'success', text: 'Video URL cleared.' });
-                                }}
-                                className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono rounded-xl transition-all"
-                              >
-                                Clear URL
-                              </button>
-                            )}
-                          </div>
-                        </form>
-                      </div>
-                    )}
-
-                    {/* Option 3: GitHub & Vercel Sync Guide */}
-                    {videoInputMode === 'github' && (
-                      <div className="space-y-4">
-                        <div className="p-3.5 bg-cyan-950/30 border border-cyan-500/30 rounded-xl space-y-1 text-xs text-cyan-200">
-                          <p className="font-semibold text-cyan-300 flex items-center gap-1.5">
-                            <GitBranch className="w-3.5 h-3.5 text-cyan-400" />
-                            <span>How Multi-Device & Vercel Syncing Works:</span>
-                          </p>
-                          <p className="text-[11px] leading-relaxed text-cyan-200/80">
-                            When you browse a file from your PC (Mode 1), your browser stores it only on that one device. To make your video load automatically on every phone, laptop, and visitor on Vercel, place the MP4 file in your GitHub repository inside the <code>public/</code> folder.
-                          </p>
-                        </div>
-
-                        {/* Scanner / Status Card */}
-                        <div className="p-4 bg-slate-900/90 border border-slate-700/80 rounded-xl space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-mono text-slate-300 font-semibold flex items-center gap-2">
-                              <Sparkles className="w-4 h-4 text-sky-400" />
-                              <span>Vercel Repository Video Status</span>
-                            </span>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                playClickSound(750);
-                                setIsScanningRepo(true);
-                                const found = await detectProjectRepoVideo();
-                                setDetectedRepoVideo(found);
-                                const active = await resolveActiveHeroVideo(data.personalInfo?.heroVideoUrl);
-                                setActiveResolvedVideo(active);
-                                setIsScanningRepo(false);
-                                if (found) {
-                                  setAuthMsg({
-                                    type: 'success',
-                                    text: `Detected repository video at "${found}"! It is active for all devices.`,
-                                  });
-                                } else {
-                                  setAuthMsg({
-                                    type: 'info',
-                                    text: 'No repo video found at /public/intro.mp4 yet. Follow the 3 steps below.',
-                                  });
-                                }
-                              }}
-                              disabled={isScanningRepo}
-                              className="px-3 py-1.5 bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-300 text-[11px] font-mono rounded-lg transition-all flex items-center gap-1.5"
-                            >
-                              <RotateCcw className={`w-3 h-3 ${isScanningRepo ? 'animate-spin' : ''}`} />
-                              <span>{isScanningRepo ? 'Scanning...' : 'Check Vercel Deployment'}</span>
-                            </button>
-                          </div>
-
-                          {detectedRepoVideo ? (
-                            <div className="p-3 bg-emerald-950/30 border border-emerald-500/30 rounded-lg space-y-2">
-                              <div className="flex items-center gap-2 text-xs font-mono text-emerald-300 font-bold">
-                                <Check className="w-4 h-4 text-emerald-400" />
-                                <span>Deployed File Found: {detectedRepoVideo}</span>
-                              </div>
-                              <p className="text-[11px] text-emerald-200/80 leading-relaxed">
-                                This video is compiled into your Vercel build and plays globally across all devices!
-                              </p>
-                              <div className="relative w-full max-h-44 rounded-lg overflow-hidden border border-slate-800 bg-black flex items-center justify-center">
-                                <video
-                                  src={detectedRepoVideo}
-                                  autoPlay
-                                  loop
-                                  muted
-                                  playsInline
-                                  controls
-                                  className="w-full max-h-44 object-contain"
-                                />
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-lg space-y-1 text-xs text-slate-400">
-                              <span className="text-amber-300 font-semibold block">⚠️ No Video File in /public yet</span>
-                              <span>
-                                Vercel currently does not have an MP4 in the public directory. Follow the steps below to add it.
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* 3 Step Deployment Guide */}
-                        <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl space-y-3">
-                          <h4 className="text-xs font-mono font-bold text-white uppercase tracking-wider">
-                            3-Step Guide to Add Video to GitHub &amp; Vercel:
-                          </h4>
-
-                          <div className="space-y-2.5 text-xs text-slate-300 font-mono">
-                            <div className="flex items-start gap-2.5">
-                              <span className="w-5 h-5 rounded-full bg-sky-500 text-slate-950 text-[11px] font-bold flex items-center justify-center shrink-0">
-                                1
-                              </span>
-                              <div>
-                                <span className="text-white font-semibold">Copy Video into Public Folder</span>
-                                <p className="text-[11px] text-slate-400 mt-0.5">
-                                  Place your video inside the <code>public/</code> folder and name it <code>intro.mp4</code> (e.g. <code>public/intro.mp4</code>).
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-start gap-2.5">
-                              <span className="w-5 h-5 rounded-full bg-sky-500 text-slate-950 text-[11px] font-bold flex items-center justify-center shrink-0">
-                                2
-                              </span>
-                              <div className="w-full">
-                                <span className="text-white font-semibold">Commit &amp; Push to GitHub</span>
-                                <div className="mt-1 p-2 bg-black/60 rounded-lg border border-slate-800 text-[11px] text-sky-300 select-all font-mono">
-                                  git add public/intro.mp4<br />
-                                  git commit -m &quot;Add hero intro video&quot;<br />
-                                  git push
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="flex items-start gap-2.5">
-                              <span className="w-5 h-5 rounded-full bg-sky-500 text-slate-950 text-[11px] font-bold flex items-center justify-center shrink-0">
-                                3
-                              </span>
-                              <div>
-                                <span className="text-white font-semibold">Vercel Auto-Deploys</span>
-                                <p className="text-[11px] text-slate-400 mt-0.5">
-                                  Vercel will rebuild automatically in ~30 seconds. Your video will immediately stream to every visitor on mobile, desktop, and tablet.
-                                </p>
-                              </div>
-                            </div>
-                          </div>
                         </div>
                       </div>
                     )}

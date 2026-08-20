@@ -4,6 +4,7 @@ import fs from 'fs';
 import multer from 'multer';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
+import { db } from './server/db';
 
 async function startServer() {
   const app = express();
@@ -410,26 +411,14 @@ Always respond enthusiastically, professionally, and concisely in a space/cosmic
 
         const stats = fs.statSync(videoFilePath);
 
-        // Update portfolio-data.json so heroVideoUrl points to /hero-video.mp4
-        const portfolioDataPath = path.join(publicDir, 'portfolio-data.json');
-        if (fs.existsSync(portfolioDataPath)) {
-          try {
-            const raw = fs.readFileSync(portfolioDataPath, 'utf-8');
-            const data = JSON.parse(raw);
-            if (data && data.personalInfo) {
-              data.personalInfo.heroVideoUrl = '/hero-video.mp4';
-              fs.writeFileSync(portfolioDataPath, JSON.stringify(data, null, 2), 'utf-8');
-            }
-          } catch (e) {
-            console.error('Failed to update portfolio-data.json with video URL:', e);
-          }
-        }
+        // Update database with video URL
+        db.setHeroVideo('/hero-video.mp4');
 
         return res.json({
           success: true,
           url: '/hero-video.mp4',
           size: stats.size,
-          message: 'Video successfully saved to server and synced across all devices!',
+          message: 'Video successfully saved to database & storage, and synced across all devices!',
         });
       } catch (err: any) {
         console.error('Server video upload error:', err);
@@ -444,48 +433,73 @@ Always respond enthusiastically, professionally, and concisely in a space/cosmic
       if (fs.existsSync(videoFilePath)) {
         fs.unlinkSync(videoFilePath);
       }
-      return res.json({ success: true, message: 'Server video deleted successfully' });
+      db.setHeroVideo('');
+      return res.json({ success: true, message: 'Server video deleted and removed from database.' });
     } catch (err: any) {
       return res.status(500).json({ success: false, message: err.message });
     }
   });
 
   // ----------------------------------------------------
-  // CROSS-DEVICE PORTFOLIO DATA SYNCHRONIZATION
+  // BACKEND DATABASE & CROSS-DEVICE SYNCHRONIZATION
   // ----------------------------------------------------
-  const portfolioDataFilePath = path.join(publicDir, 'portfolio-data.json');
 
-  // Fetch cross-device portfolio customizations
+  // Fetch cross-device portfolio customizations from database
   app.get('/api/portfolio/data', (_req, res) => {
     try {
-      if (fs.existsSync(portfolioDataFilePath)) {
-        const raw = fs.readFileSync(portfolioDataFilePath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        return res.json({ success: true, data: parsed, synced: true });
-      }
-      return res.json({ success: true, data: null, synced: false });
+      const data = db.getData();
+      return res.json({ success: true, data, synced: true });
     } catch (err: any) {
-      console.error('Error reading portfolio data:', err);
-      return res.json({ success: false, data: null, error: err.message });
+      console.error('Error reading portfolio database:', err);
+      return res.status(500).json({ success: false, data: null, error: err.message });
     }
   });
 
-  // Save cross-device portfolio customizations
+  // Save/Update cross-device portfolio customizations in database
   app.post('/api/portfolio/data', (req, res) => {
     try {
-      const { data } = req.body || {};
-      if (!data || typeof data !== 'object') {
+      const payload = req.body?.data || req.body;
+      if (!payload || typeof payload !== 'object') {
         return res.status(400).json({ success: false, message: 'Invalid portfolio data payload' });
       }
 
-      fs.writeFileSync(portfolioDataFilePath, JSON.stringify(data, null, 2), 'utf-8');
+      const updated = db.updateData(payload);
       return res.json({
         success: true,
-        message: 'Portfolio data saved to server and synced across all devices globally!',
+        data: updated,
+        message: 'Portfolio customizations saved to database and live across all devices!',
       });
     } catch (err: any) {
-      console.error('Error writing portfolio data:', err);
+      console.error('Error updating portfolio database:', err);
       return res.status(500).json({ success: false, message: err.message || 'Failed to persist portfolio data' });
+    }
+  });
+
+  // Partial update endpoint
+  app.patch('/api/portfolio/data', (req, res) => {
+    try {
+      const payload = req.body;
+      if (!payload || typeof payload !== 'object') {
+        return res.status(400).json({ success: false, message: 'Invalid patch payload' });
+      }
+      const updated = db.updateData(payload);
+      return res.json({ success: true, data: updated });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // Reset database endpoint
+  app.post('/api/portfolio/reset', (_req, res) => {
+    try {
+      const resetData = db.reset();
+      return res.json({
+        success: true,
+        data: resetData,
+        message: 'Portfolio reset to default verified data in backend database.',
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
     }
   });
 

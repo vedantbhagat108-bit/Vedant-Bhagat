@@ -72,18 +72,22 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     async function loadServerData() {
       try {
-        const res = await fetch('/api/portfolio/data');
+        const res = await fetch(`/api/portfolio/data?t=${Date.now()}`);
         if (res.ok) {
           const result = await res.json();
           if (result && result.data && isMounted) {
-            setData((prev) => ({
+            const serverCustomizations = result.data;
+            setData({
               ...defaultPortfolioData,
-              ...prev,
-              ...result.data,
-            }));
+              ...serverCustomizations,
+              personalInfo: {
+                ...defaultPortfolioData.personalInfo,
+                ...(serverCustomizations.personalInfo || {}),
+              },
+            });
             setIsCloudSynced(true);
             try {
-              localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...defaultPortfolioData, ...result.data }));
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(serverCustomizations));
             } catch {}
             return;
           }
@@ -94,15 +98,18 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       // Static fallback attempt
       try {
-        const staticRes = await fetch('/portfolio-data.json');
+        const staticRes = await fetch(`/portfolio-data.json?t=${Date.now()}`);
         if (staticRes.ok) {
           const staticData = await staticRes.json();
           if (staticData && isMounted) {
-            setData((prev) => ({
+            setData({
               ...defaultPortfolioData,
-              ...prev,
               ...staticData,
-            }));
+              personalInfo: {
+                ...defaultPortfolioData.personalInfo,
+                ...(staticData.personalInfo || {}),
+              },
+            });
             setIsCloudSynced(true);
           }
         }
@@ -316,6 +323,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const resetToDefaults = () => {
     setData(defaultPortfolioData);
     localStorage.removeItem(STORAGE_KEY);
+    fetch('/api/portfolio/reset', { method: 'POST' }).catch(() => {});
     syncToCloud(defaultPortfolioData);
   };
 

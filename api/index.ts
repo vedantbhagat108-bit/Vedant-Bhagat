@@ -1,5 +1,6 @@
 import express from "express";
 import { GoogleGenAI } from "@google/genai";
+import { db } from "../server/db";
 
 const app = express();
 
@@ -321,6 +322,52 @@ app.post("/api/auth/verify-owner", (req, res) => {
     ownerName: "Vedant Bhagat",
     message: "Owner verification successful.",
   });
+});
+
+// Database & Portfolio Endpoints for serverless/API
+app.get("/api/portfolio/data", (_req, res) => {
+  try {
+    const data = db.getData();
+    return res.json({ success: true, data, synced: true });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/portfolio/data", (req, res) => {
+  try {
+    const payload = req.body?.data || req.body;
+    const updated = db.updateData(payload);
+    return res.json({
+      success: true,
+      data: updated,
+      message: "Portfolio customizations saved to database and live across all devices!",
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post("/api/portfolio/reset", (_req, res) => {
+  try {
+    const resetData = db.reset();
+    return res.json({ success: true, data: resetData });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get("/api/video/current", (_req, res) => {
+  try {
+    const data = db.getData();
+    const heroVideoUrl = data.personalInfo?.heroVideoUrl;
+    if (heroVideoUrl) {
+      return res.json({ exists: true, url: heroVideoUrl });
+    }
+    return res.json({ exists: false, url: null });
+  } catch {
+    return res.json({ exists: false, url: null });
+  }
 });
 
 export default app;
