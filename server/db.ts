@@ -295,7 +295,13 @@ function getPostgresClient() {
     process.env.DATABASE_URL ||
     process.env.POSTGRES_PRISMA_URL ||
     process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.SUPABASE_DB_URL;
+    process.env.SUPABASE_DB_URL ||
+    // Fallback for Neon integrations connected with a custom "postgre_" env var prefix
+    process.env.postgre_POSTGRES_URL ||
+    process.env.postgre_DATABASE_URL ||
+    process.env.postgre_POSTGRES_PRISMA_URL ||
+    process.env.postgre_POSTGRES_URL_NON_POOLING ||
+    process.env.postgre_DATABASE_URL_UNPOOLED;
 
   if (!connString || connString.includes('MY_') || connString.length < 10) {
     return null;
