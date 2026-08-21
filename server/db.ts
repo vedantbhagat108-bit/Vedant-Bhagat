@@ -314,6 +314,11 @@ function getPostgresClient() {
     return null;
   }
 }
+export function debugEnvKeys() {
+  return Object.keys(process.env).filter(
+    (k) => k.toLowerCase().includes('postgre') || k.toLowerCase().includes('database')
+  );
+}
 
 async function ensureTable(sql: any) {
   if (isTableInitialized) return;
