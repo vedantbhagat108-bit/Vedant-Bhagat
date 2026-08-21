@@ -23,6 +23,10 @@ export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
+    // TEMPORARY DEBUG — remove after diagnosing
+  if (req.query?.debug === '1') {
+    return res.status(200).json({ envKeys: debugEnvKeys() });
+  }
 
   // 1. GET: Fetch latest portfolio data from single persistent Neon/Postgres table
   if (req.method === 'GET') {
