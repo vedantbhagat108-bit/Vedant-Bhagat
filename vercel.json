@@ -2,6 +2,18 @@
   "version": 2,
   "rewrites": [
     {
+      "source": "/api/portfolio",
+      "destination": "/api/portfolio"
+    },
+    {
+      "source": "/api/portfolio/data",
+      "destination": "/api/portfolio"
+    },
+    {
+      "source": "/api/portfolio/reset",
+      "destination": "/api/portfolio"
+    },
+    {
       "source": "/api/chat",
       "destination": "/api/chat"
     },
@@ -24,6 +36,10 @@
     {
       "source": "/api/github-contributions",
       "destination": "/api/github-contributions"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
     },
     {
       "source": "/(.*)",

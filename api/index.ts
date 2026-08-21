@@ -324,40 +324,79 @@ app.post("/api/auth/verify-owner", (req, res) => {
   });
 });
 
+// Anti-caching middleware helper
+const setNoCacheHeaders = (res: express.Response) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+};
+
 // Database & Portfolio Endpoints for serverless/API
-app.get("/api/portfolio/data", (_req, res) => {
+app.get(["/api/portfolio", "/api/portfolio/data"], async (_req, res) => {
+  setNoCacheHeaders(res);
   try {
-    const data = db.getData();
-    return res.json({ success: true, data, synced: true });
+    const result = await db.getCloudData();
+    return res.json({ success: true, data: result.data, provider: result.provider, synced: true });
   } catch (err: any) {
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(200).json({ success: true, data: db.getData(), synced: false, error: err.message });
   }
 });
 
-app.post("/api/portfolio/data", (req, res) => {
+app.post(["/api/portfolio", "/api/portfolio/data"], async (req, res) => {
   try {
     const payload = req.body?.data || req.body;
-    const updated = db.updateData(payload);
+    const clientPassword =
+      req.body?.password ||
+      req.headers['x-admin-password'] ||
+      (req.headers['authorization'] ? (req.headers['authorization'] as string).replace('Bearer ', '').trim() : '');
+
+    const configuredOwnerPassword = process.env.OWNER_PASSWORD || process.env.ADMIN_PASSWORD;
+    if (configuredOwnerPassword && (!clientPassword || clientPassword !== configuredOwnerPassword)) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized: Valid owner password is required.',
+      });
+    }
+
+    const saveResult = await db.saveCloudData(payload);
     return res.json({
       success: true,
-      data: updated,
-      message: "Portfolio customizations saved to database and live across all devices!",
+      data: saveResult.data,
+      provider: saveResult.provider,
+      message: "Portfolio customizations saved to cloud database and live across all devices!",
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }
 });
 
-app.post("/api/portfolio/reset", (_req, res) => {
+app.put("/api/portfolio", async (req, res) => {
   try {
-    const resetData = db.reset();
-    return res.json({ success: true, data: resetData });
+    const payload = req.body?.data || req.body;
+    const saveResult = await db.saveCloudData(payload);
+    return res.json({
+      success: true,
+      data: saveResult.data,
+      provider: saveResult.provider,
+      message: "Portfolio customizations saved to cloud database and live across all devices!",
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post("/api/portfolio/reset", async (_req, res) => {
+  try {
+    const resetResult = await db.resetCloudData();
+    return res.json({ success: true, data: resetResult.data, provider: resetResult.provider });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }
 });
 
 app.get("/api/video/current", (_req, res) => {
+  setNoCacheHeaders(res);
   try {
     const data = db.getData();
     const heroVideoUrl = data.personalInfo?.heroVideoUrl;

@@ -444,30 +444,52 @@ Always respond enthusiastically, professionally, and concisely in a space/cosmic
   // BACKEND DATABASE & CROSS-DEVICE SYNCHRONIZATION
   // ----------------------------------------------------
 
+  const setNoCacheHeaders = (res: express.Response) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+  };
+
   // Fetch cross-device portfolio customizations from database
-  app.get('/api/portfolio/data', (_req, res) => {
+  app.get(['/api/portfolio', '/api/portfolio/data'], async (_req, res) => {
+    setNoCacheHeaders(res);
     try {
-      const data = db.getData();
-      return res.json({ success: true, data, synced: true });
+      const result = await db.getCloudData();
+      return res.json({ success: true, data: result.data, provider: result.provider, synced: true });
     } catch (err: any) {
       console.error('Error reading portfolio database:', err);
-      return res.status(500).json({ success: false, data: null, error: err.message });
+      return res.status(200).json({ success: true, data: db.getData(), synced: false, error: err.message });
     }
   });
 
   // Save/Update cross-device portfolio customizations in database
-  app.post('/api/portfolio/data', (req, res) => {
+  app.post(['/api/portfolio', '/api/portfolio/data'], async (req, res) => {
     try {
       const payload = req.body?.data || req.body;
       if (!payload || typeof payload !== 'object') {
         return res.status(400).json({ success: false, message: 'Invalid portfolio data payload' });
       }
 
-      const updated = db.updateData(payload);
+      const clientPassword =
+        req.body?.password ||
+        req.headers['x-admin-password'] ||
+        (req.headers['authorization'] ? (req.headers['authorization'] as string).replace('Bearer ', '').trim() : '');
+
+      const configuredOwnerPassword = process.env.OWNER_PASSWORD || process.env.ADMIN_PASSWORD;
+      if (configuredOwnerPassword && (!clientPassword || clientPassword !== configuredOwnerPassword)) {
+        return res.status(401).json({
+          success: false,
+          message: 'Unauthorized: Valid owner password is required.',
+        });
+      }
+
+      const result = await db.saveCloudData(payload);
       return res.json({
         success: true,
-        data: updated,
-        message: 'Portfolio customizations saved to database and live across all devices!',
+        data: result.data,
+        provider: result.provider,
+        message: 'Portfolio customizations saved to cloud database and live across all devices!',
       });
     } catch (err: any) {
       console.error('Error updating portfolio database:', err);
@@ -475,28 +497,26 @@ Always respond enthusiastically, professionally, and concisely in a space/cosmic
     }
   });
 
-  // Partial update endpoint
-  app.patch('/api/portfolio/data', (req, res) => {
+  // Put endpoint for portfolio
+  app.put('/api/portfolio', async (req, res) => {
     try {
-      const payload = req.body;
-      if (!payload || typeof payload !== 'object') {
-        return res.status(400).json({ success: false, message: 'Invalid patch payload' });
-      }
-      const updated = db.updateData(payload);
-      return res.json({ success: true, data: updated });
+      const payload = req.body?.data || req.body;
+      const result = await db.saveCloudData(payload);
+      return res.json({ success: true, data: result.data, provider: result.provider });
     } catch (err: any) {
       return res.status(500).json({ success: false, message: err.message });
     }
   });
 
   // Reset database endpoint
-  app.post('/api/portfolio/reset', (_req, res) => {
+  app.post('/api/portfolio/reset', async (_req, res) => {
     try {
-      const resetData = db.reset();
+      const resetResult = await db.resetCloudData();
       return res.json({
         success: true,
-        data: resetData,
-        message: 'Portfolio reset to default verified data in backend database.',
+        data: resetResult.data,
+        provider: resetResult.provider,
+        message: 'Portfolio reset to default verified data in cloud database.',
       });
     } catch (err: any) {
       return res.status(500).json({ success: false, message: err.message });
