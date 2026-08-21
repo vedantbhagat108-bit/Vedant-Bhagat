@@ -1,6 +1,8 @@
 import express from "express";
 import { GoogleGenAI } from "@google/genai";
 import { db } from "../server/db";
+import { list, del } from "@vercel/blob";
+import { handleUpload } from "@vercel/blob/client";
 
 const app = express();
 
@@ -190,7 +192,6 @@ app.get("/api/blob/active-video", async (_req, res) => {
 
     const token = process.env.BLOB_READ_WRITE_TOKEN;
     if (isValidBlobToken(token)) {
-      const { list } = await import("@vercel/blob");
       const response = await list({ prefix: "hero-videos/", limit: 5, token: token! }).catch(() => null);
       if (response && response.blobs && response.blobs.length > 0) {
         const latest = response.blobs.sort(
@@ -221,7 +222,6 @@ app.post("/api/blob-upload", async (req, res) => {
       });
     }
 
-    const { handleUpload } = await import("@vercel/blob/client");
     const jsonResponse = await handleUpload({
       body: req.body,
       request: req,
@@ -267,7 +267,6 @@ app.post("/api/blob/delete", async (req, res) => {
     const targetUrl = url || activeBlobVideo?.url;
 
     if (process.env.BLOB_READ_WRITE_TOKEN && targetUrl) {
-      const { del } = await import("@vercel/blob");
       await del(targetUrl);
     }
 
