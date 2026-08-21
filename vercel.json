@@ -1,0 +1,60 @@
+{
+  "version": 2,
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Expires",
+          "value": "0"
+        },
+        {
+          "key": "Surrogate-Control",
+          "value": "no-store"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/portfolio/data",
+      "destination": "/api/portfolio"
+    },
+    {
+      "source": "/api/portfolio/reset",
+      "destination": "/api/portfolio"
+    },
+    {
+      "source": "/api/auth/verify-owner",
+      "destination": "/api/verify-owner"
+    },
+    {
+      "source": "/api/auth/change-password",
+      "destination": "/api/change-password"
+    },
+    {
+      "source": "/api/blob-upload",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/api/blob/:path*",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/api/video/:path*",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
