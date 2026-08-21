@@ -1,6 +1,6 @@
 import express from "express";
 import { GoogleGenAI } from "@google/genai";
-import { db } from "../server/db";
+import { db } from "../server/db.js";
 import { list, del } from "@vercel/blob";
 import { handleUpload } from "@vercel/blob/client";
 
