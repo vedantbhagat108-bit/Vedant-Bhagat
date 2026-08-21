@@ -1,5 +1,4 @@
 import { neon } from '@neondatabase/serverless';
-import crypto from 'crypto';
 
 export interface PortfolioDatabaseSchema {
   personalInfo: {
@@ -277,10 +276,6 @@ export function mergeWithDefault(incoming: Partial<PortfolioDatabaseSchema>): Po
     personalInfo: {
       ...DEFAULT_DATABASE_STATE.personalInfo,
       ...(incoming.personalInfo || {}),
-      heroVideoUrl:
-        incoming.personalInfo?.heroVideoUrl !== undefined
-          ? incoming.personalInfo.heroVideoUrl
-          : DEFAULT_DATABASE_STATE.personalInfo.heroVideoUrl,
     },
     education: incoming.education || DEFAULT_DATABASE_STATE.education,
     projects: incoming.projects || DEFAULT_DATABASE_STATE.projects,
@@ -293,21 +288,14 @@ export function mergeWithDefault(incoming: Partial<PortfolioDatabaseSchema>): Po
 }
 
 let isTableInitialized = false;
-let isAdminTableInitialized = false;
 
-export function getPostgresClient() {
+function getPostgresClient() {
   const connString =
     process.env.POSTGRES_URL ||
     process.env.DATABASE_URL ||
     process.env.POSTGRES_PRISMA_URL ||
     process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.SUPABASE_DB_URL ||
-    // Fallback for Neon integrations connected with a custom "postgre_" env var prefix
-    process.env.postgre_POSTGRES_URL ||
-    process.env.postgre_DATABASE_URL ||
-    process.env.postgre_POSTGRES_PRISMA_URL ||
-    process.env.postgre_POSTGRES_URL_NON_POOLING ||
-    process.env.postgre_DATABASE_URL_UNPOOLED;
+    process.env.SUPABASE_DB_URL;
 
   if (!connString || connString.includes('MY_') || connString.length < 10) {
     return null;
@@ -319,11 +307,6 @@ export function getPostgresClient() {
     console.warn('Neon connection initialization warning:', e);
     return null;
   }
-}
-export function debugEnvKeys() {
-  return Object.keys(process.env).filter(
-    (k) => k.toLowerCase().includes('postgre') || k.toLowerCase().includes('database')
-  );
 }
 
 async function ensureTable(sql: any) {
@@ -339,127 +322,6 @@ async function ensureTable(sql: any) {
     isTableInitialized = true;
   } catch (e) {
     console.warn('Table initialization warning:', e);
-  }
-}
-
-async function ensureAdminTable(sql: any) {
-  if (isAdminTableInitialized) return;
-  try {
-    await sql`
-      CREATE TABLE IF NOT EXISTS admin_credentials (
-        id TEXT PRIMARY KEY,
-        password_hash TEXT NOT NULL,
-        salt TEXT NOT NULL,
-        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-      );
-    `;
-    isAdminTableInitialized = true;
-  } catch (e) {
-    console.warn('Admin credentials table initialization warning:', e);
-  }
-}
-
-/**
- * Hash password with PBKDF2
- */
-function hashPassword(password: string, salt: string): string {
-  return crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
-}
-
-/**
- * Verify admin password against Neon Postgres admin_credentials table,
- * falling back to OWNER_PASSWORD environment variable for bootstrap.
- */
-export async function verifyAdminPassword(password?: string): Promise<boolean> {
-  if (!password || typeof password !== 'string' || password.trim().length === 0) {
-    return false;
-  }
-
-  const cleanPassword = password.trim();
-  const envPassword = (process.env.OWNER_PASSWORD || process.env.ADMIN_PASSWORD || '').trim();
-  const sql = getPostgresClient();
-
-  if (sql) {
-    await ensureAdminTable(sql);
-    try {
-      const rows = await sql`
-        SELECT password_hash, salt
-        FROM admin_credentials
-        WHERE id = 'admin'
-        LIMIT 1;
-      `;
-
-      if (rows && rows.length > 0 && rows[0].password_hash && rows[0].salt) {
-        const computedHash = hashPassword(cleanPassword, rows[0].salt);
-        const storedHash = rows[0].password_hash;
-        if (computedHash.length === storedHash.length) {
-          const match = crypto.timingSafeEqual(Buffer.from(computedHash), Buffer.from(storedHash));
-          if (match) return true;
-        }
-        return false;
-      }
-    } catch (e) {
-      console.warn('Error reading admin credentials from Postgres:', e);
-    }
-  }
-
-  // Bootstrap from environment variable if database has no stored credentials yet
-  if (envPassword) {
-    return cleanPassword === envPassword;
-  }
-
-  return false;
-}
-
-/**
- * Persistently update owner password in Neon Postgres admin_credentials table.
- */
-export async function updateAdminPassword(
-  oldPassword?: string,
-  newPassword?: string
-): Promise<{ success: boolean; message: string }> {
-  if (!newPassword || newPassword.trim().length < 4) {
-    return { success: false, message: 'New password must be at least 4 characters long.' };
-  }
-
-  const isOldValid = await verifyAdminPassword(oldPassword);
-  if (!isOldValid) {
-    return { success: false, message: 'Current password verification failed. Please enter your existing owner password.' };
-  }
-
-  const sql = getPostgresClient();
-  if (!sql) {
-    return {
-      success: false,
-      message: 'Database persistence unavailable: POSTGRES_URL environment variable is required to persist password changes across devices.',
-    };
-  }
-
-  await ensureAdminTable(sql);
-  const salt = crypto.randomBytes(16).toString('hex');
-  const passwordHash = hashPassword(newPassword.trim(), salt);
-
-  try {
-    await sql`
-      INSERT INTO admin_credentials (id, password_hash, salt, updated_at)
-      VALUES ('admin', ${passwordHash}, ${salt}, NOW())
-      ON CONFLICT (id)
-      DO UPDATE SET
-        password_hash = EXCLUDED.password_hash,
-        salt = EXCLUDED.salt,
-        updated_at = NOW();
-    `;
-
-    return {
-      success: true,
-      message: 'Owner password successfully updated and securely persisted in Neon/Postgres.',
-    };
-  } catch (err: any) {
-    console.error('Failed to save updated password in Postgres:', err);
-    return {
-      success: false,
-      message: err.message || 'Database error while saving new password.',
-    };
   }
 }
 
@@ -583,10 +445,6 @@ export async function savePortfolioData(
     personalInfo: {
       ...current.personalInfo,
       ...(partial.personalInfo || {}),
-      heroVideoUrl:
-        partial.personalInfo?.heroVideoUrl !== undefined
-          ? partial.personalInfo.heroVideoUrl
-          : current.personalInfo.heroVideoUrl,
     },
     updatedAt: new Date().toISOString(),
     version: (current.version || 1) + 1,

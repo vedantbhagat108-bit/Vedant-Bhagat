@@ -65,7 +65,7 @@ export async function uploadVideoToVercelBlob(
       },
     });
 
-    // Notify backend to register this as the active hero video in the central Postgres portfolio JSON
+    // Notify backend to register this as the active hero video
     await fetch('/api/blob/set-active', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

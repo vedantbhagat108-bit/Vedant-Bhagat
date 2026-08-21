@@ -176,11 +176,6 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const payload = overrideData || dataRef.current;
     const sessionPass = sessionStorage.getItem(ADMIN_PASS_KEY) || '';
 
-    if (!sessionPass) {
-      // No active owner password session in this tab; local state updated only
-      return false;
-    }
-
     try {
       const res = await fetch('/api/portfolio', {
         method: 'POST',
@@ -206,14 +201,12 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
         setIsCloudSynced(true);
         return true;
-      } else if (res.status === 401) {
-        console.warn('Portfolio database write requires valid owner authorization.');
       } else {
         const errJson = await res.json().catch(() => ({}));
-        console.warn('Database write response:', errJson);
+        console.error('Database write error response:', errJson);
       }
     } catch (e) {
-      console.warn('Failed to persist portfolio customizations to database:', e);
+      console.error('Failed to persist portfolio customizations to database:', e);
     }
     return false;
   };
