@@ -266,7 +266,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   /**
-   * Admin Authentication
+   * Admin Authentication (Strict Server-Verified Only)
    */
   const loginAsAdmin = async (email: string, password?: string): Promise<{ success: boolean; message: string }> => {
     const cleanEmail = email.trim().toLowerCase();
@@ -287,7 +287,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!password) {
       return {
         success: false,
-        message: 'Password required to log in as Owner.',
+        message: 'Password is required to log in as Owner.',
       };
     }
 
@@ -306,22 +306,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         });
       }
 
-      const contentType = response.headers.get('content-type') || '';
-      if (response.ok && contentType.includes('application/json')) {
-        const resData = await response.json();
-        if (resData.success) {
-          setIsAdminLoggedIn(true);
-          setAdminEmail('vedantbhagat108@gmail.com');
-          sessionStorage.setItem(ADMIN_AUTH_KEY, 'true');
-          sessionStorage.setItem(ADMIN_PASS_KEY, password);
-          return { success: true, message: 'Owner Identity Verified. Cloud Customization Enabled!' };
-        } else {
-          return { success: false, message: resData.message || 'Authentication failed. Please check your password.' };
-        }
-      }
-
-      // If password meets minimum length during offline/dev mode
-      if (password && password.length >= 4) {
+      const resData = await response.json().catch(() => ({}));
+      if (response.ok && resData.success) {
         setIsAdminLoggedIn(true);
         setAdminEmail('vedantbhagat108@gmail.com');
         sessionStorage.setItem(ADMIN_AUTH_KEY, 'true');
@@ -329,16 +315,15 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return { success: true, message: 'Owner Identity Verified. Cloud Customization Enabled!' };
       }
 
-      return { success: false, message: 'Invalid owner password.' };
+      return {
+        success: false,
+        message: resData.message || 'Authentication failed. Please check your owner password.',
+      };
     } catch (err: any) {
-      if (password && password.length >= 4) {
-        setIsAdminLoggedIn(true);
-        setAdminEmail('vedantbhagat108@gmail.com');
-        sessionStorage.setItem(ADMIN_AUTH_KEY, 'true');
-        sessionStorage.setItem(ADMIN_PASS_KEY, password);
-        return { success: true, message: 'Owner Identity Verified. Cloud Customization Enabled!' };
-      }
-      return { success: false, message: 'Verification error. Please enter your owner password.' };
+      return {
+        success: false,
+        message: 'Unable to connect to authentication server. Please check your network connection.',
+      };
     }
   };
 
@@ -370,22 +355,21 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         });
       }
 
-      const contentType = response.headers.get('content-type') || '';
-      if (response.ok && contentType.includes('application/json')) {
-        const resData = await response.json();
-        if (resData.success) {
-          sessionStorage.setItem(ADMIN_PASS_KEY, cleanNewPass);
-          return { success: true, message: 'Password successfully updated!' };
-        } else {
-          return { success: false, message: resData.message || 'Failed to update password.' };
-        }
+      const resData = await response.json().catch(() => ({}));
+      if (response.ok && resData.success) {
+        sessionStorage.setItem(ADMIN_PASS_KEY, cleanNewPass);
+        return { success: true, message: 'Password successfully updated!' };
       }
 
-      sessionStorage.setItem(ADMIN_PASS_KEY, cleanNewPass);
-      return { success: true, message: 'Password successfully updated!' };
+      return {
+        success: false,
+        message: resData.message || 'Failed to update owner password.',
+      };
     } catch {
-      sessionStorage.setItem(ADMIN_PASS_KEY, cleanNewPass);
-      return { success: true, message: 'Password updated successfully!' };
+      return {
+        success: false,
+        message: 'Unable to connect to server to update password.',
+      };
     }
   };
 

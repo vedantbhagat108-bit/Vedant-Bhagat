@@ -4,7 +4,7 @@ export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization, X-Admin-Password'
   );
 
   if (req.method === 'OPTIONS') {
@@ -29,7 +29,7 @@ export default async function handler(req: any, res: any) {
     return res.status(403).json({
       success: false,
       authenticated: false,
-      message: 'Access Denied: Only the portfolio owner is authorized to customize this site.',
+      message: 'Access Denied: Only the portfolio owner (Vedant Bhagat) is authorized.',
     });
   }
 
@@ -43,12 +43,19 @@ export default async function handler(req: any, res: any) {
 
   const expectedPass = process.env.OWNER_PASSWORD || process.env.ADMIN_PASSWORD;
 
-  // If an environment password is configured on Vercel, verify it
-  if (expectedPass && password !== expectedPass) {
+  if (!expectedPass) {
+    return res.status(500).json({
+      success: false,
+      authenticated: false,
+      message: 'Server Configuration Error: OWNER_PASSWORD is not configured on the server.',
+    });
+  }
+
+  if (password !== expectedPass) {
     return res.status(401).json({
       success: false,
       authenticated: false,
-      message: 'Incorrect Owner Password.',
+      message: 'Incorrect Owner Password. Access denied.',
     });
   }
 

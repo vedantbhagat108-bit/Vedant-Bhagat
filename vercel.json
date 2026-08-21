@@ -25,10 +25,6 @@
   ],
   "rewrites": [
     {
-      "source": "/api/portfolio",
-      "destination": "/api/portfolio"
-    },
-    {
       "source": "/api/portfolio/data",
       "destination": "/api/portfolio"
     },
@@ -37,15 +33,7 @@
       "destination": "/api/portfolio"
     },
     {
-      "source": "/api/chat",
-      "destination": "/api/chat"
-    },
-    {
       "source": "/api/auth/verify-owner",
-      "destination": "/api/verify-owner"
-    },
-    {
-      "source": "/api/verify-owner",
       "destination": "/api/verify-owner"
     },
     {
@@ -53,19 +41,7 @@
       "destination": "/api/change-password"
     },
     {
-      "source": "/api/change-password",
-      "destination": "/api/change-password"
-    },
-    {
-      "source": "/api/github-contributions",
-      "destination": "/api/github-contributions"
-    },
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    },
-    {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]

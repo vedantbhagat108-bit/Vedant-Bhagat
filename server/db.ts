@@ -1,5 +1,4 @@
-import fs from 'fs';
-import path from 'path';
+import { neon } from '@neondatabase/serverless';
 
 export interface PortfolioDatabaseSchema {
   personalInfo: {
@@ -270,282 +269,263 @@ export const DEFAULT_DATABASE_STATE: PortfolioDatabaseSchema = {
   version: 1,
 };
 
-/**
- * Single Persistent Cloud Database Manager (Neon / Postgres)
- * Exactly ONE source of truth for portfolio data across all devices.
- */
-export class CloudPortfolioDatabase {
-  private inMemoryFallback: PortfolioDatabaseSchema = { ...DEFAULT_DATABASE_STATE };
-  private isTableInitialized = false;
-  private localDbPath: string;
+export function mergeWithDefault(incoming: Partial<PortfolioDatabaseSchema>): PortfolioDatabaseSchema {
+  return {
+    ...DEFAULT_DATABASE_STATE,
+    ...incoming,
+    personalInfo: {
+      ...DEFAULT_DATABASE_STATE.personalInfo,
+      ...(incoming.personalInfo || {}),
+    },
+    education: incoming.education || DEFAULT_DATABASE_STATE.education,
+    projects: incoming.projects || DEFAULT_DATABASE_STATE.projects,
+    skillCategories: incoming.skillCategories || DEFAULT_DATABASE_STATE.skillCategories,
+    certifications: incoming.certifications || DEFAULT_DATABASE_STATE.certifications,
+    leetcodeTopics: incoming.leetcodeTopics || DEFAULT_DATABASE_STATE.leetcodeTopics,
+    leetcodeSkillMetrics: incoming.leetcodeSkillMetrics || DEFAULT_DATABASE_STATE.leetcodeSkillMetrics,
+    leetcodeSolvedCount: incoming.leetcodeSolvedCount || DEFAULT_DATABASE_STATE.leetcodeSolvedCount,
+  };
+}
 
-  constructor() {
-    this.localDbPath = path.resolve(process.cwd(), 'portfolio-data.json');
-    this.loadLocalDiskFallback();
+let isTableInitialized = false;
+
+function getPostgresClient() {
+  const connString =
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.SUPABASE_DB_URL;
+
+  if (!connString || connString.includes('MY_') || connString.length < 10) {
+    return null;
   }
 
-  private loadLocalDiskFallback() {
-    try {
-      if (fs.existsSync(this.localDbPath)) {
-        const raw = fs.readFileSync(this.localDbPath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object') {
-          this.inMemoryFallback = this.mergeWithDefault(parsed);
-        }
-      }
-    } catch {}
-  }
-
-  private saveLocalDiskFallback(data: PortfolioDatabaseSchema) {
-    try {
-      fs.writeFileSync(this.localDbPath, JSON.stringify(data, null, 2), 'utf-8');
-    } catch {}
-  }
-
-  public mergeWithDefault(incoming: Partial<PortfolioDatabaseSchema>): PortfolioDatabaseSchema {
-    return {
-      ...DEFAULT_DATABASE_STATE,
-      ...incoming,
-      personalInfo: {
-        ...DEFAULT_DATABASE_STATE.personalInfo,
-        ...(incoming.personalInfo || {}),
-      },
-      education: incoming.education || DEFAULT_DATABASE_STATE.education,
-      projects: incoming.projects || DEFAULT_DATABASE_STATE.projects,
-      skillCategories: incoming.skillCategories || DEFAULT_DATABASE_STATE.skillCategories,
-      certifications: incoming.certifications || DEFAULT_DATABASE_STATE.certifications,
-      leetcodeTopics: incoming.leetcodeTopics || DEFAULT_DATABASE_STATE.leetcodeTopics,
-      leetcodeSkillMetrics: incoming.leetcodeSkillMetrics || DEFAULT_DATABASE_STATE.leetcodeSkillMetrics,
-      leetcodeSolvedCount: incoming.leetcodeSolvedCount || DEFAULT_DATABASE_STATE.leetcodeSolvedCount,
-    };
-  }
-
-  /**
-   * Connect to Postgres (Neon / Supabase / Cloud Postgres)
-   * Resolves standard connection environment variables.
-   */
-  private async getPostgresClient() {
-    const connString =
-      process.env.POSTGRES_URL ||
-      process.env.DATABASE_URL ||
-      process.env.POSTGRES_PRISMA_URL ||
-      process.env.POSTGRES_URL_NON_POOLING ||
-      process.env.SUPABASE_DB_URL;
-
-    if (!connString || connString.includes('MY_') || connString.length < 10) {
-      return null;
-    }
-
-    try {
-      const { neon } = await import('@neondatabase/serverless');
-      const sql = neon(connString);
-
-      if (!this.isTableInitialized) {
-        // Ensure portfolio_data table exists with atomic primary key
-        await sql`
-          CREATE TABLE IF NOT EXISTS portfolio_data (
-            id TEXT PRIMARY KEY,
-            data JSONB NOT NULL,
-            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-          );
-        `;
-        this.isTableInitialized = true;
-      }
-      return sql;
-    } catch (err) {
-      console.warn('Postgres initialization warning:', err);
-      return null;
-    }
-  }
-
-  /**
-   * GET Portfolio Data:
-   * Queries the single persistent cloud database record (id = 'main').
-   * If table has no record yet or no database is configured, returns DEFAULT_DATABASE_STATE.
-   */
-  public async getCloudData(): Promise<{
-    data: PortfolioDatabaseSchema;
-    provider: 'postgres' | 'default';
-    updatedAt?: string;
-  }> {
-    const sql = await this.getPostgresClient();
-
-    if (sql) {
-      try {
-        const rows = await sql`
-          SELECT data, updated_at
-          FROM portfolio_data
-          WHERE id = 'main'
-          LIMIT 1;
-        `;
-
-        if (rows && rows.length > 0 && rows[0].data) {
-          const cloudData = this.mergeWithDefault(rows[0].data as Partial<PortfolioDatabaseSchema>);
-          this.inMemoryFallback = cloudData;
-          this.saveLocalDiskFallback(cloudData);
-          return {
-            data: cloudData,
-            provider: 'postgres',
-            updatedAt: rows[0].updated_at ? new Date(rows[0].updated_at).toISOString() : new Date().toISOString(),
-          };
-        }
-
-        // Backward compatibility: check if data exists in legacy id or table
-        try {
-          const legacyRows = await sql`
-            SELECT data, updated_at
-            FROM portfolio_data
-            WHERE id = 'vedant_portfolio'
-            LIMIT 1;
-          `;
-          if (legacyRows && legacyRows.length > 0 && legacyRows[0].data) {
-            const legacyData = this.mergeWithDefault(legacyRows[0].data as Partial<PortfolioDatabaseSchema>);
-            // Auto-migrate to 'main'
-            await sql`
-              INSERT INTO portfolio_data (id, data, updated_at)
-              VALUES ('main', ${JSON.stringify(legacyData)}::jsonb, NOW())
-              ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW();
-            `;
-            this.inMemoryFallback = legacyData;
-            return {
-              data: legacyData,
-              provider: 'postgres',
-              updatedAt: new Date().toISOString(),
-            };
-          }
-        } catch {}
-
-        // If table is empty, seed it with DEFAULT_DATABASE_STATE
-        await sql`
-          INSERT INTO portfolio_data (id, data, updated_at)
-          VALUES ('main', ${JSON.stringify(DEFAULT_DATABASE_STATE)}::jsonb, NOW())
-          ON CONFLICT (id) DO NOTHING;
-        `;
-        return {
-          data: { ...DEFAULT_DATABASE_STATE },
-          provider: 'postgres',
-          updatedAt: new Date().toISOString(),
-        };
-      } catch (dbErr) {
-        console.error('Error querying Postgres database:', dbErr);
-        throw dbErr;
-      }
-    }
-
-    // Local development fallback without Postgres
-    return {
-      data: { ...this.inMemoryFallback },
-      provider: 'default',
-      updatedAt: this.inMemoryFallback.updatedAt || new Date().toISOString(),
-    };
-  }
-
-  /**
-   * SAVE Portfolio Data:
-   * Executes atomic UPSERT into the single persistent Postgres record (id = 'main').
-   * Guarantees all devices read the exact same cloud record.
-   */
-  public async saveCloudData(
-    partial: Partial<PortfolioDatabaseSchema>
-  ): Promise<{ data: PortfolioDatabaseSchema; provider: 'postgres' | 'local'; updatedAt: string }> {
-    const current = this.inMemoryFallback;
-    const nowIso = new Date().toISOString();
-
-    const merged: PortfolioDatabaseSchema = {
-      ...current,
-      ...partial,
-      personalInfo: {
-        ...current.personalInfo,
-        ...(partial.personalInfo || {}),
-      },
-      updatedAt: nowIso,
-      version: (current.version || 1) + 1,
-    };
-
-    const sql = await this.getPostgresClient();
-
-    if (sql) {
-      try {
-        // Atomic UPSERT into Postgres
-        await sql`
-          INSERT INTO portfolio_data (id, data, updated_at)
-          VALUES ('main', ${JSON.stringify(merged)}::jsonb, NOW())
-          ON CONFLICT (id)
-          DO UPDATE SET
-            data = EXCLUDED.data,
-            updated_at = NOW();
-        `;
-
-        this.inMemoryFallback = merged;
-        this.saveLocalDiskFallback(merged);
-
-        return {
-          data: merged,
-          provider: 'postgres',
-          updatedAt: nowIso,
-        };
-      } catch (err: any) {
-        console.error('Failed to write to Postgres database:', err);
-        throw new Error(`Database persistence failed: ${err.message || err}`);
-      }
-    }
-
-    // In local development without Postgres connection string
-    this.inMemoryFallback = merged;
-    this.saveLocalDiskFallback(merged);
-    return {
-      data: merged,
-      provider: 'local',
-      updatedAt: nowIso,
-    };
-  }
-
-  /**
-   * RESET Portfolio Data back to verified defaults
-   */
-  public async resetCloudData(): Promise<{
-    data: PortfolioDatabaseSchema;
-    provider: 'postgres' | 'local';
-    updatedAt: string;
-  }> {
-    const resetState: PortfolioDatabaseSchema = {
-      ...DEFAULT_DATABASE_STATE,
-      updatedAt: new Date().toISOString(),
-      version: (this.inMemoryFallback.version || 1) + 1,
-    };
-    return this.saveCloudData(resetState);
-  }
-
-  /**
-   * Synchronous helper for local getters
-   */
-  public getData(): PortfolioDatabaseSchema {
-    return { ...this.inMemoryFallback };
-  }
-
-  public updateData(partial: Partial<PortfolioDatabaseSchema>): PortfolioDatabaseSchema {
-    const updated = this.mergeWithDefault({ ...this.inMemoryFallback, ...partial });
-    this.inMemoryFallback = updated;
-    this.saveLocalDiskFallback(updated);
-    this.saveCloudData(partial).catch((err) => console.warn('Background database sync error:', err));
-    return updated;
-  }
-
-  public setHeroVideo(videoUrl: string): PortfolioDatabaseSchema {
-    return this.updateData({
-      personalInfo: {
-        ...this.inMemoryFallback.personalInfo,
-        heroVideoUrl: videoUrl,
-      },
-    });
-  }
-
-  public reset(): PortfolioDatabaseSchema {
-    this.inMemoryFallback = { ...DEFAULT_DATABASE_STATE };
-    this.saveLocalDiskFallback(DEFAULT_DATABASE_STATE);
-    this.resetCloudData().catch((err) => console.warn('Background database reset error:', err));
-    return DEFAULT_DATABASE_STATE;
+  try {
+    return neon(connString);
+  } catch (e) {
+    console.warn('Neon connection initialization warning:', e);
+    return null;
   }
 }
 
-export const db = new CloudPortfolioDatabase();
+async function ensureTable(sql: any) {
+  if (isTableInitialized) return;
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS portfolio_data (
+        id TEXT PRIMARY KEY,
+        data JSONB NOT NULL,
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `;
+    isTableInitialized = true;
+  } catch (e) {
+    console.warn('Table initialization warning:', e);
+  }
+}
+
+/**
+ * Fetch portfolio data from Neon/Postgres (Single Row: id = 'main')
+ */
+export async function getPortfolioData(): Promise<{
+  data: PortfolioDatabaseSchema;
+  provider: 'postgres' | 'default';
+  updatedAt: string;
+  synced: boolean;
+}> {
+  const sql = getPostgresClient();
+
+  if (sql) {
+    await ensureTable(sql);
+    const rows = await sql`
+      SELECT data, updated_at
+      FROM portfolio_data
+      WHERE id = 'main'
+      LIMIT 1;
+    `;
+
+    if (rows && rows.length > 0 && rows[0].data) {
+      const cloudData = mergeWithDefault(rows[0].data as Partial<PortfolioDatabaseSchema>);
+      return {
+        data: cloudData,
+        provider: 'postgres',
+        updatedAt: rows[0].updated_at ? new Date(rows[0].updated_at).toISOString() : new Date().toISOString(),
+        synced: true,
+      };
+    }
+
+    // Check legacy identifier for backward compatibility
+    try {
+      const legacyRows = await sql`
+        SELECT data, updated_at
+        FROM portfolio_data
+        WHERE id = 'vedant_portfolio'
+        LIMIT 1;
+      `;
+      if (legacyRows && legacyRows.length > 0 && legacyRows[0].data) {
+        const legacyData = mergeWithDefault(legacyRows[0].data as Partial<PortfolioDatabaseSchema>);
+        await sql`
+          INSERT INTO portfolio_data (id, data, updated_at)
+          VALUES ('main', ${JSON.stringify(legacyData)}::jsonb, NOW())
+          ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW();
+        `;
+        return {
+          data: legacyData,
+          provider: 'postgres',
+          updatedAt: new Date().toISOString(),
+          synced: true,
+        };
+      }
+    } catch {}
+
+    // Seed default state into table
+    await sql`
+      INSERT INTO portfolio_data (id, data, updated_at)
+      VALUES ('main', ${JSON.stringify(DEFAULT_DATABASE_STATE)}::jsonb, NOW())
+      ON CONFLICT (id) DO NOTHING;
+    `;
+
+    return {
+      data: DEFAULT_DATABASE_STATE,
+      provider: 'postgres',
+      updatedAt: DEFAULT_DATABASE_STATE.updatedAt || new Date().toISOString(),
+      synced: true,
+    };
+  }
+
+  // When POSTGRES_URL is absent (local dev without cloud database)
+  return {
+    data: DEFAULT_DATABASE_STATE,
+    provider: 'default',
+    updatedAt: DEFAULT_DATABASE_STATE.updatedAt || new Date().toISOString(),
+    synced: false,
+  };
+}
+
+/**
+ * Save portfolio data to Neon/Postgres (Single Row: id = 'main')
+ * Throws error if POSTGRES_URL is missing or write fails.
+ */
+export async function savePortfolioData(
+  partial: Partial<PortfolioDatabaseSchema>
+): Promise<{
+  data: PortfolioDatabaseSchema;
+  provider: 'postgres';
+  updatedAt: string;
+  synced: boolean;
+}> {
+  const sql = getPostgresClient();
+
+  if (!sql) {
+    throw new Error(
+      'Database persistence failed: POSTGRES_URL or DATABASE_URL environment variable is not configured on the server.'
+    );
+  }
+
+  await ensureTable(sql);
+
+  // Fetch current row to merge partial changes
+  let current = DEFAULT_DATABASE_STATE;
+  try {
+    const existing = await sql`
+      SELECT data
+      FROM portfolio_data
+      WHERE id = 'main'
+      LIMIT 1;
+    `;
+    if (existing && existing.length > 0 && existing[0].data) {
+      current = mergeWithDefault(existing[0].data as Partial<PortfolioDatabaseSchema>);
+    }
+  } catch {}
+
+  const merged: PortfolioDatabaseSchema = {
+    ...current,
+    ...partial,
+    personalInfo: {
+      ...current.personalInfo,
+      ...(partial.personalInfo || {}),
+    },
+    updatedAt: new Date().toISOString(),
+    version: (current.version || 1) + 1,
+  };
+
+  const nowIso = merged.updatedAt;
+
+  // Atomic UPSERT into Postgres table
+  await sql`
+    INSERT INTO portfolio_data (id, data, updated_at)
+    VALUES ('main', ${JSON.stringify(merged)}::jsonb, NOW())
+    ON CONFLICT (id)
+    DO UPDATE SET
+      data = EXCLUDED.data,
+      updated_at = NOW();
+  `;
+
+  return {
+    data: merged,
+    provider: 'postgres',
+    updatedAt: nowIso,
+    synced: true,
+  };
+}
+
+/**
+ * Reset portfolio data to default state in Neon/Postgres (id = 'main')
+ */
+export async function resetPortfolioData(): Promise<{
+  data: PortfolioDatabaseSchema;
+  provider: 'postgres';
+  updatedAt: string;
+  synced: boolean;
+}> {
+  const sql = getPostgresClient();
+
+  if (!sql) {
+    throw new Error(
+      'Database persistence failed: POSTGRES_URL or DATABASE_URL environment variable is not configured on the server.'
+    );
+  }
+
+  await ensureTable(sql);
+
+  const resetState: PortfolioDatabaseSchema = {
+    ...DEFAULT_DATABASE_STATE,
+    updatedAt: new Date().toISOString(),
+    version: 1,
+  };
+
+  await sql`
+    INSERT INTO portfolio_data (id, data, updated_at)
+    VALUES ('main', ${JSON.stringify(resetState)}::jsonb, NOW())
+    ON CONFLICT (id)
+    DO UPDATE SET
+      data = EXCLUDED.data,
+      updated_at = NOW();
+  `;
+
+  return {
+    data: resetState,
+    provider: 'postgres',
+    updatedAt: resetState.updatedAt,
+    synced: true,
+  };
+}
+
+/**
+ * Object wrapper for compatibility with Express server.ts
+ */
+export const db = {
+  getCloudData: getPortfolioData,
+  saveCloudData: savePortfolioData,
+  resetCloudData: resetPortfolioData,
+  getData: () => DEFAULT_DATABASE_STATE,
+  setHeroVideo: async (videoUrl: string) => {
+    return savePortfolioData({
+      personalInfo: {
+        ...DEFAULT_DATABASE_STATE.personalInfo,
+        heroVideoUrl: videoUrl,
+      },
+    });
+  },
+};
