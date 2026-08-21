@@ -33,6 +33,10 @@
       "destination": "/api/portfolio"
     },
     {
+      "source": "/api/blob/upload",
+      "destination": "/api/blob-upload"
+    },
+    {
       "source": "/api/auth/verify-owner",
       "destination": "/api/verify-owner"
     },

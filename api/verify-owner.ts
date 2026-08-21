@@ -1,3 +1,5 @@
+import { verifyAdminPassword } from '../server/db';
+
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -41,17 +43,9 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  const expectedPass = process.env.OWNER_PASSWORD || process.env.ADMIN_PASSWORD;
+  const isValid = await verifyAdminPassword(password);
 
-  if (!expectedPass) {
-    return res.status(500).json({
-      success: false,
-      authenticated: false,
-      message: 'Server Configuration Error: OWNER_PASSWORD is not configured on the server.',
-    });
-  }
-
-  if (password !== expectedPass) {
+  if (!isValid) {
     return res.status(401).json({
       success: false,
       authenticated: false,

@@ -125,12 +125,12 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
 
   // Local Form States
   const [leetcodeCount, setLeetcodeCount] = useState(data.leetcodeSolvedCount || '200+');
-  const [bioText, setBioText] = useState(data.personalInfo.bio);
-  const [cgpaText, setCgpaText] = useState(data.personalInfo.cgpa);
-  const [projectsList, setProjectsList] = useState(data.projects);
+  const [bioText, setBioText] = useState(data.personalInfo?.bio || '');
+  const [cgpaText, setCgpaText] = useState(data.personalInfo?.cgpa || '');
+  const [projectsList, setProjectsList] = useState(data.projects || []);
   const [skillsList, setSkillsList] = useState<SkillCategory[]>(data.skillCategories || []);
   const [certificationsList, setCertificationsList] = useState<Certification[]>(data.certifications || []);
-  const [heroVideoUrlInput, setHeroVideoUrlInput] = useState(data.personalInfo.heroVideoUrl || '');
+  const [heroVideoUrlInput, setHeroVideoUrlInput] = useState(data.personalInfo?.heroVideoUrl || '');
   const [videoInputMode, setVideoInputMode] = useState<'local' | 'url' | 'blob'>('local');
   const [serverVideo, setServerVideo] = useState<{ exists: boolean; url: string | null; size?: number } | null>(null);
   const [isServerUploading, setIsServerUploading] = useState<boolean>(false);
@@ -140,6 +140,19 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
   const [blobStatus, setBlobStatus] = useState<{ configured: boolean; message?: string } | null>(null);
   const [activeResolvedVideo, setActiveResolvedVideo] = useState<string | null>(null);
   const [isVideoDisabled, setIsVideoDisabled] = useState<boolean>(false);
+
+  // Sync with incoming cloud data
+  React.useEffect(() => {
+    if (data) {
+      setLeetcodeCount(data.leetcodeSolvedCount || '200+');
+      setBioText(data.personalInfo?.bio || '');
+      setCgpaText(data.personalInfo?.cgpa || '');
+      setProjectsList(data.projects || []);
+      setSkillsList(data.skillCategories || []);
+      setCertificationsList(data.certifications || []);
+      setHeroVideoUrlInput(data.personalInfo?.heroVideoUrl || '');
+    }
+  }, [data]);
 
   // Load existing saved video info on tab switch or open
   React.useEffect(() => {
@@ -444,9 +457,9 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
     playClickSound(500);
     resetToDefaults();
     setLeetcodeCount('200+');
-    setBioText(data.personalInfo.bio);
-    setCgpaText(data.personalInfo.cgpa);
-    setProjectsList(data.projects);
+    setBioText(data.personalInfo?.bio || '');
+    setCgpaText(data.personalInfo?.cgpa || '');
+    setProjectsList(data.projects || []);
     setSkillsList(data.skillCategories || []);
     setCertificationsList([]);
     setAuthMsg({ type: 'success', text: 'Portfolio reset to default verified data.' });
