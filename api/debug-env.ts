@@ -11,8 +11,15 @@ export default async function handler(_req: any, res: any) {
   ];
 
   const present: Record<string, boolean> = {};
+  const shape: Record<string, string> = {};
   for (const key of candidates) {
-    present[key] = Boolean(process.env[key] && process.env[key]!.length > 0);
+    const val = process.env[key];
+    present[key] = Boolean(val && val.length > 0);
+    if (val) {
+      const looksLikeUrl = /^postgres(ql)?:\/\//i.test(val.trim());
+      const hasLeadingOrTrailingSpace = val !== val.trim();
+      shape[key] = `len=${val.length} startsWithPostgresScheme=${looksLikeUrl} hasStrayWhitespace=${hasLeadingOrTrailingSpace} first15="${val.slice(0, 15)}"`;
+    }
   }
 
   // Also list any env var name (not value) that contains these substrings,
@@ -23,6 +30,7 @@ export default async function handler(_req: any, res: any) {
 
   return res.status(200).json({
     exactNamesChecked: present,
+    valueShape: shape,
     allRelatedEnvVarNamesFound: relatedKeys.sort(),
   });
 }
