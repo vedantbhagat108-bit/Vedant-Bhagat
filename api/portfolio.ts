@@ -3,7 +3,7 @@ import {
   savePortfolioData,
   resetPortfolioData,
   PortfolioDatabaseSchema,
-} from '../server/db';
+} from '../server/db.js';
 
 export default async function handler(req: any, res: any) {
   // Strict anti-caching headers for real-time cross-device data synchronization
