@@ -255,14 +255,13 @@ export const DEFAULT_DATABASE_STATE: PortfolioDatabaseSchema = {
       badgeBg: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300',
       dotColor: 'bg-emerald-500',
       topics: [
-        { name: 'Array', count: 133 },
-        { name: 'Sorting', count: 37 },
-        { name: 'String', count: 36 },
-        { name: 'Two Pointers', count: 30 },
-        { name: 'Matrix', count: 23 },
-        { name: 'Linked List', count: 22 },
-        { name: 'Stack', count: 11 },
-        { name: 'Simulation', count: 4 },
+        { name: 'Array', count: 124 },
+        { name: 'String', count: 75 },
+        { name: 'Two Pointers', count: 45 },
+        { name: 'Sorting', count: 39 },
+        { name: 'Matrix', count: 20 },
+        { name: 'Simulation', count: 15 },
+        { name: 'Enumeration', count: 10 },
       ],
     },
   ],
@@ -272,43 +271,32 @@ export const DEFAULT_DATABASE_STATE: PortfolioDatabaseSchema = {
 };
 
 /**
- * Universal Cloud Database Manager
- * Supports:
- *  1. Vercel Postgres / Neon / Supabase SQL (POSTGRES_URL / DATABASE_URL)
- *  2. Vercel KV / Upstash Redis (KV_REST_API_URL, KV_REST_API_TOKEN, UPSTASH_REDIS_REST_URL, REDIS_URL)
- *  3. Vercel Blob Store (BLOB_READ_WRITE_TOKEN)
- *  4. Local Disk & In-Memory Fallback
+ * Single Persistent Cloud Database Manager (Neon / Postgres)
+ * Exactly ONE source of truth for portfolio data across all devices.
  */
-class CloudPortfolioDatabase {
-  private inMemoryCache: PortfolioDatabaseSchema;
-  private localDbPath: string;
+export class CloudPortfolioDatabase {
+  private inMemoryFallback: PortfolioDatabaseSchema = { ...DEFAULT_DATABASE_STATE };
   private isTableInitialized = false;
+  private localDbPath: string;
 
   constructor() {
-    this.inMemoryCache = { ...DEFAULT_DATABASE_STATE };
-    const dataDir = path.resolve(process.cwd(), 'data');
-    if (!fs.existsSync(dataDir)) {
-      try {
-        fs.mkdirSync(dataDir, { recursive: true });
-      } catch {}
-    }
-    this.localDbPath = path.join(dataDir, 'portfolio-database.json');
-    this.loadFromLocalDisk();
+    this.localDbPath = path.resolve(process.cwd(), 'portfolio-data.json');
+    this.loadLocalDiskFallback();
   }
 
-  private loadFromLocalDisk() {
+  private loadLocalDiskFallback() {
     try {
       if (fs.existsSync(this.localDbPath)) {
         const raw = fs.readFileSync(this.localDbPath, 'utf-8');
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === 'object') {
-          this.inMemoryCache = this.mergeWithDefault(parsed);
+          this.inMemoryFallback = this.mergeWithDefault(parsed);
         }
       }
     } catch {}
   }
 
-  private saveToLocalDisk(data: PortfolioDatabaseSchema) {
+  private saveLocalDiskFallback(data: PortfolioDatabaseSchema) {
     try {
       fs.writeFileSync(this.localDbPath, JSON.stringify(data, null, 2), 'utf-8');
     } catch {}
@@ -332,133 +320,137 @@ class CloudPortfolioDatabase {
     };
   }
 
-  private isValidBlobToken(token?: string): boolean {
-    if (!token || typeof token !== 'string') return false;
-    const trimmed = token.trim();
-    return (
-      trimmed.startsWith('vercel_blob_rw_') &&
-      trimmed.length > 30 &&
-      !trimmed.includes('your_token') &&
-      !trimmed.includes('MY_')
-    );
-  }
-
-  // -------------------------------------------------------------
-  // CLOUD STORAGE ADAPTERS
-  // -------------------------------------------------------------
-
   /**
-   * 1. Postgres / Neon Provider
+   * Connect to Postgres (Neon / Supabase / Cloud Postgres)
+   * Resolves standard connection environment variables.
    */
   private async getPostgresClient() {
-    const connString = process.env.POSTGRES_URL || process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
-    if (!connString || connString.includes('MY_') || connString.length < 10) return null;
+    const connString =
+      process.env.POSTGRES_URL ||
+      process.env.DATABASE_URL ||
+      process.env.POSTGRES_PRISMA_URL ||
+      process.env.POSTGRES_URL_NON_POOLING ||
+      process.env.SUPABASE_DB_URL;
+
+    if (!connString || connString.includes('MY_') || connString.length < 10) {
+      return null;
+    }
 
     try {
       const { neon } = await import('@neondatabase/serverless');
       const sql = neon(connString);
 
       if (!this.isTableInitialized) {
+        // Ensure portfolio_data table exists with atomic primary key
         await sql`
-          CREATE TABLE IF NOT EXISTS portfolio_cloud_store (
-            id VARCHAR(64) PRIMARY KEY,
+          CREATE TABLE IF NOT EXISTS portfolio_data (
+            id TEXT PRIMARY KEY,
             data JSONB NOT NULL,
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
           );
         `;
         this.isTableInitialized = true;
       }
       return sql;
-    } catch {
+    } catch (err) {
+      console.warn('Postgres initialization warning:', err);
       return null;
     }
   }
 
   /**
-   * 2. Vercel KV / Upstash Redis Provider
+   * GET Portfolio Data:
+   * Queries the single persistent cloud database record (id = 'main').
+   * If table has no record yet or no database is configured, returns DEFAULT_DATABASE_STATE.
    */
-  private async getRedisClient() {
-    const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-    const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+  public async getCloudData(): Promise<{
+    data: PortfolioDatabaseSchema;
+    provider: 'postgres' | 'default';
+    updatedAt?: string;
+  }> {
+    const sql = await this.getPostgresClient();
 
-    if (!url || !token || url.includes('MY_') || token.includes('MY_')) return null;
-
-    try {
-      const { Redis } = await import('@upstash/redis');
-      return new Redis({ url, token });
-    } catch {
-      return null;
-    }
-  }
-
-  // -------------------------------------------------------------
-  // PUBLIC ASYNC DATABASE OPERATIONS
-  // -------------------------------------------------------------
-
-  /**
-   * Fetch latest portfolio state from the active Cloud Database
-   */
-  public async getCloudData(): Promise<{ data: PortfolioDatabaseSchema; provider: string }> {
-    // 1. Try Postgres / Neon
-    try {
-      const sql = await this.getPostgresClient();
-      if (sql) {
+    if (sql) {
+      try {
         const rows = await sql`
-          SELECT data FROM portfolio_cloud_store WHERE id = 'vedant_portfolio' LIMIT 1;
+          SELECT data, updated_at
+          FROM portfolio_data
+          WHERE id = 'main'
+          LIMIT 1;
         `;
+
         if (rows && rows.length > 0 && rows[0].data) {
           const cloudData = this.mergeWithDefault(rows[0].data as Partial<PortfolioDatabaseSchema>);
-          this.inMemoryCache = cloudData;
-          this.saveToLocalDisk(cloudData);
-          return { data: cloudData, provider: 'postgres' };
+          this.inMemoryFallback = cloudData;
+          this.saveLocalDiskFallback(cloudData);
+          return {
+            data: cloudData,
+            provider: 'postgres',
+            updatedAt: rows[0].updated_at ? new Date(rows[0].updated_at).toISOString() : new Date().toISOString(),
+          };
         }
-      }
-    } catch {}
 
-    // 2. Try Upstash / Vercel KV
-    try {
-      const redis = await this.getRedisClient();
-      if (redis) {
-        const raw = await redis.get('portfolio_database');
-        if (raw) {
-          const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-          const cloudData = this.mergeWithDefault(parsed);
-          this.inMemoryCache = cloudData;
-          this.saveToLocalDisk(cloudData);
-          return { data: cloudData, provider: 'kv' };
-        }
-      }
-    } catch {}
-
-    // 3. Try Vercel Blob JSON Store fallback (only if valid token is provided)
-    const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
-    if (this.isValidBlobToken(blobToken)) {
-      try {
-        const { list } = await import('@vercel/blob');
-        const listRes = await list({ prefix: 'portfolio-store/data.json', limit: 1, token: blobToken });
-        if (listRes && listRes.blobs && listRes.blobs.length > 0) {
-          const blobUrl = listRes.blobs[0].url;
-          const fetchRes = await fetch(`${blobUrl}?t=${Date.now()}`);
-          if (fetchRes.ok) {
-            const parsed = await fetchRes.json();
-            const cloudData = this.mergeWithDefault(parsed);
-            this.inMemoryCache = cloudData;
-            this.saveToLocalDisk(cloudData);
-            return { data: cloudData, provider: 'blob' };
+        // Backward compatibility: check if data exists in legacy id or table
+        try {
+          const legacyRows = await sql`
+            SELECT data, updated_at
+            FROM portfolio_data
+            WHERE id = 'vedant_portfolio'
+            LIMIT 1;
+          `;
+          if (legacyRows && legacyRows.length > 0 && legacyRows[0].data) {
+            const legacyData = this.mergeWithDefault(legacyRows[0].data as Partial<PortfolioDatabaseSchema>);
+            // Auto-migrate to 'main'
+            await sql`
+              INSERT INTO portfolio_data (id, data, updated_at)
+              VALUES ('main', ${JSON.stringify(legacyData)}::jsonb, NOW())
+              ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW();
+            `;
+            this.inMemoryFallback = legacyData;
+            return {
+              data: legacyData,
+              provider: 'postgres',
+              updatedAt: new Date().toISOString(),
+            };
           }
-        }
-      } catch {}
+        } catch {}
+
+        // If table is empty, seed it with DEFAULT_DATABASE_STATE
+        await sql`
+          INSERT INTO portfolio_data (id, data, updated_at)
+          VALUES ('main', ${JSON.stringify(DEFAULT_DATABASE_STATE)}::jsonb, NOW())
+          ON CONFLICT (id) DO NOTHING;
+        `;
+        return {
+          data: { ...DEFAULT_DATABASE_STATE },
+          provider: 'postgres',
+          updatedAt: new Date().toISOString(),
+        };
+      } catch (dbErr) {
+        console.error('Error querying Postgres database:', dbErr);
+        throw dbErr;
+      }
     }
 
-    // 4. Local File / Memory Fallback
-    return { data: { ...this.inMemoryCache }, provider: 'local' };
+    // Local development fallback without Postgres
+    return {
+      data: { ...this.inMemoryFallback },
+      provider: 'default',
+      updatedAt: this.inMemoryFallback.updatedAt || new Date().toISOString(),
+    };
   }
 
   /**
-   * Save/Update portfolio state persistently into the active Cloud Database
+   * SAVE Portfolio Data:
+   * Executes atomic UPSERT into the single persistent Postgres record (id = 'main').
+   * Guarantees all devices read the exact same cloud record.
    */
-  public async saveCloudData(partial: Partial<PortfolioDatabaseSchema>): Promise<{ data: PortfolioDatabaseSchema; provider: string }> {
-    const current = this.inMemoryCache;
+  public async saveCloudData(
+    partial: Partial<PortfolioDatabaseSchema>
+  ): Promise<{ data: PortfolioDatabaseSchema; provider: 'postgres' | 'local'; updatedAt: string }> {
+    const current = this.inMemoryFallback;
+    const nowIso = new Date().toISOString();
+
     const merged: PortfolioDatabaseSchema = {
       ...current,
       ...partial,
@@ -466,95 +458,92 @@ class CloudPortfolioDatabase {
         ...current.personalInfo,
         ...(partial.personalInfo || {}),
       },
-      updatedAt: new Date().toISOString(),
+      updatedAt: nowIso,
       version: (current.version || 1) + 1,
     };
 
-    this.inMemoryCache = merged;
-    this.saveToLocalDisk(merged);
+    const sql = await this.getPostgresClient();
 
-    let savedProvider = 'local';
-
-    // 1. Persist to Postgres / Neon
-    try {
-      const sql = await this.getPostgresClient();
-      if (sql) {
-        await sql`
-          INSERT INTO portfolio_cloud_store (id, data, updated_at)
-          VALUES ('vedant_portfolio', ${JSON.stringify(merged)}::jsonb, CURRENT_TIMESTAMP)
-          ON CONFLICT (id) DO UPDATE
-          SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP;
-        `;
-        savedProvider = 'postgres';
-      }
-    } catch {}
-
-    // 2. Persist to Upstash / Vercel KV
-    try {
-      const redis = await this.getRedisClient();
-      if (redis) {
-        await redis.set('portfolio_database', JSON.stringify(merged));
-        savedProvider = savedProvider === 'postgres' ? 'postgres+kv' : 'kv';
-      }
-    } catch {}
-
-    // 3. Persist to Vercel Blob Store (only if valid token is provided)
-    const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
-    if (this.isValidBlobToken(blobToken)) {
+    if (sql) {
       try {
-        const { put } = await import('@vercel/blob');
-        await put('portfolio-store/data.json', JSON.stringify(merged, null, 2), {
-          access: 'public',
-          addRandomSuffix: false,
-          contentType: 'application/json',
-          token: blobToken,
-        });
-        savedProvider = savedProvider !== 'local' ? `${savedProvider}+blob` : 'blob';
-      } catch {}
+        // Atomic UPSERT into Postgres
+        await sql`
+          INSERT INTO portfolio_data (id, data, updated_at)
+          VALUES ('main', ${JSON.stringify(merged)}::jsonb, NOW())
+          ON CONFLICT (id)
+          DO UPDATE SET
+            data = EXCLUDED.data,
+            updated_at = NOW();
+        `;
+
+        this.inMemoryFallback = merged;
+        this.saveLocalDiskFallback(merged);
+
+        return {
+          data: merged,
+          provider: 'postgres',
+          updatedAt: nowIso,
+        };
+      } catch (err: any) {
+        console.error('Failed to write to Postgres database:', err);
+        throw new Error(`Database persistence failed: ${err.message || err}`);
+      }
     }
 
-    return { data: merged, provider: savedProvider };
+    // In local development without Postgres connection string
+    this.inMemoryFallback = merged;
+    this.saveLocalDiskFallback(merged);
+    return {
+      data: merged,
+      provider: 'local',
+      updatedAt: nowIso,
+    };
   }
 
   /**
-   * Reset database back to original verified default state
+   * RESET Portfolio Data back to verified defaults
    */
-  public async resetCloudData(): Promise<{ data: PortfolioDatabaseSchema; provider: string }> {
+  public async resetCloudData(): Promise<{
+    data: PortfolioDatabaseSchema;
+    provider: 'postgres' | 'local';
+    updatedAt: string;
+  }> {
     const resetState: PortfolioDatabaseSchema = {
       ...DEFAULT_DATABASE_STATE,
       updatedAt: new Date().toISOString(),
-      version: (this.inMemoryCache.version || 1) + 1,
+      version: (this.inMemoryFallback.version || 1) + 1,
     };
     return this.saveCloudData(resetState);
   }
 
-  // Synchronous helpers for server.ts / backward-compatible endpoints
+  /**
+   * Synchronous helper for local getters
+   */
   public getData(): PortfolioDatabaseSchema {
-    return { ...this.inMemoryCache };
+    return { ...this.inMemoryFallback };
   }
 
   public updateData(partial: Partial<PortfolioDatabaseSchema>): PortfolioDatabaseSchema {
-    const updated = this.mergeWithDefault({ ...this.inMemoryCache, ...partial });
-    this.inMemoryCache = updated;
-    this.saveToLocalDisk(updated);
-    // Trigger background cloud save
-    this.saveCloudData(partial).catch((err) => console.warn('Background cloud sync warning:', err));
+    const updated = this.mergeWithDefault({ ...this.inMemoryFallback, ...partial });
+    this.inMemoryFallback = updated;
+    this.saveLocalDiskFallback(updated);
+    this.saveCloudData(partial).catch((err) => console.warn('Background database sync error:', err));
     return updated;
   }
 
   public setHeroVideo(videoUrl: string): PortfolioDatabaseSchema {
     return this.updateData({
       personalInfo: {
-        ...this.inMemoryCache.personalInfo,
+        ...this.inMemoryFallback.personalInfo,
         heroVideoUrl: videoUrl,
       },
     });
   }
 
   public reset(): PortfolioDatabaseSchema {
-    this.inMemoryCache = { ...DEFAULT_DATABASE_STATE };
-    this.saveToLocalDisk(DEFAULT_DATABASE_STATE);
-    this.resetCloudData().catch((err) => console.warn('Background cloud reset warning:', err));
+    this.inMemoryFallback = { ...DEFAULT_DATABASE_STATE };
+    this.saveLocalDiskFallback(DEFAULT_DATABASE_STATE);
+    this.resetCloudData().catch((err) => console.warn('Background database reset error:', err));
     return DEFAULT_DATABASE_STATE;
   }
 }

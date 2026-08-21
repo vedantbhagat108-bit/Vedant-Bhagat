@@ -1748,13 +1748,19 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
 
                                   setVideoDisabledPreference(false);
                                   setIsVideoDisabled(false);
+                                  await updatePortfolioData({
+                                    personalInfo: {
+                                      ...data.personalInfo,
+                                      heroVideoUrl: result.url,
+                                    },
+                                  });
                                   window.dispatchEvent(new Event('portfolio-video-updated'));
-                                  const active = await resolveActiveHeroVideo(data.personalInfo?.heroVideoUrl);
+                                  const active = await resolveActiveHeroVideo(result.url);
                                   setActiveResolvedVideo(active);
 
                                   setAuthMsg({
                                     type: 'success',
-                                    text: `Success! Video uploaded to Vercel Blob and synced across all devices.`,
+                                    text: `Success! Video uploaded to Vercel Blob and saved to Postgres database.`,
                                   });
                                 } catch (err: any) {
                                   console.error('Blob upload error:', err);
@@ -1844,8 +1850,14 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                                 const targetUrl = vercelBlobVideo.url;
                                 await deleteVercelBlobVideo(targetUrl);
                                 setVercelBlobVideo(null);
+                                await updatePortfolioData({
+                                  personalInfo: {
+                                    ...data.personalInfo,
+                                    heroVideoUrl: '',
+                                  },
+                                });
                                 window.dispatchEvent(new Event('portfolio-video-updated'));
-                                const newActive = await resolveActiveHeroVideo(data.personalInfo?.heroVideoUrl);
+                                const newActive = await resolveActiveHeroVideo('');
                                 setActiveResolvedVideo(newActive);
                                 setAuthMsg({
                                   type: 'success',

@@ -8,7 +8,7 @@ import {
   LEETCODE_TOPICS,
   LEETCODE_SKILL_METRICS,
 } from '../data/portfolioData';
-import { Project, EducationItem, SkillCategory, Certification, LeetCodeTopic } from '../types';
+import { EducationItem, SkillCategory, Certification, LeetCodeTopic } from '../types';
 
 export interface PortfolioData {
   personalInfo: typeof PERSONAL_INFO;
@@ -30,12 +30,11 @@ interface PortfolioContextType {
   loginAsAdmin: (email: string, password?: string) => Promise<{ success: boolean; message: string }>;
   logoutAdmin: () => void;
   changeAdminPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean; message: string }>;
-  updatePortfolioData: (newData: Partial<PortfolioData>) => void;
-  resetToDefaults: () => void;
+  updatePortfolioData: (newData: Partial<PortfolioData>) => Promise<boolean>;
+  resetToDefaults: () => Promise<boolean>;
   refetchCloudData: () => Promise<void>;
 }
 
-const STORAGE_CACHE_KEY = 'vedant_portfolio_cache_v3';
 const ADMIN_AUTH_KEY = 'vedant_portfolio_admin_auth';
 const ADMIN_PASS_KEY = 'vedant_portfolio_admin_token';
 
@@ -53,27 +52,8 @@ export const DEFAULT_PORTFOLIO_DATA: PortfolioData = {
 const PortfolioContext = createContext<PortfolioContextType | undefined>(undefined);
 
 export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Initialize state from local cache for instant paint, then immediately sync with Cloud Database
-  const [data, setData] = useState<PortfolioData>(() => {
-    try {
-      const cached = localStorage.getItem(STORAGE_CACHE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        return {
-          ...DEFAULT_PORTFOLIO_DATA,
-          ...parsed,
-          personalInfo: {
-            ...DEFAULT_PORTFOLIO_DATA.personalInfo,
-            ...(parsed.personalInfo || {}),
-          },
-        };
-      }
-    } catch (e) {
-      console.warn('Error reading initial local cache:', e);
-    }
-    return DEFAULT_PORTFOLIO_DATA;
-  });
-
+  // 1. Always start directly with verified DEFAULT_PORTFOLIO_DATA (no stale localStorage override)
+  const [data, setData] = useState<PortfolioData>(DEFAULT_PORTFOLIO_DATA);
   const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
   const isFetchingRef = useRef<boolean>(false);
   const dataRef = useRef<PortfolioData>(data);
@@ -81,34 +61,22 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   /**
    * Primary Cloud Data Fetcher (Source of Truth)
-   * Fetches latest state from Cloud Database across all devices
+   * Fetches latest data from GET /api/portfolio across all devices.
    */
   const fetchCloudPortfolioData = useCallback(async (isBackground = false) => {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
 
     try {
-      // 1. Try standard /api/portfolio endpoint with anti-cache query param & headers
-      let res = await fetch(`/api/portfolio?t=${Date.now()}`, {
+      // Anti-cache query parameter and headers to ensure fresh data
+      const res = await fetch(`/api/portfolio?t=${Date.now()}`, {
         method: 'GET',
         headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
           Pragma: 'no-cache',
         },
         cache: 'no-store',
       });
-
-      // 2. Fallback to /api/portfolio/data if 404
-      if (!res.ok && res.status === 404) {
-        res = await fetch(`/api/portfolio/data?t=${Date.now()}`, {
-          method: 'GET',
-          headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            Pragma: 'no-cache',
-          },
-          cache: 'no-store',
-        });
-      }
 
       if (res.ok) {
         const result = await res.json();
@@ -123,45 +91,21 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             },
           };
 
+          // Update React state with fresh cloud database response
           setData(merged);
           setIsCloudSynced(true);
-
-          try {
-            localStorage.setItem(STORAGE_CACHE_KEY, JSON.stringify(merged));
-          } catch {}
-          return;
         }
       }
     } catch (err) {
       if (!isBackground) {
-        console.warn('Cloud database fetch error, attempting static mirror fallback:', err);
+        console.warn('Cloud database fetch notice:', err);
       }
     } finally {
       isFetchingRef.current = false;
     }
-
-    // 3. Static mirror file fallback (if API is offline)
-    try {
-      const staticRes = await fetch(`/portfolio-data.json?t=${Date.now()}`, { cache: 'no-store' });
-      if (staticRes.ok) {
-        const staticData = await staticRes.json();
-        if (staticData && staticData.personalInfo) {
-          const merged: PortfolioData = {
-            ...DEFAULT_PORTFOLIO_DATA,
-            ...staticData,
-            personalInfo: {
-              ...DEFAULT_PORTFOLIO_DATA.personalInfo,
-              ...(staticData.personalInfo || {}),
-            },
-          };
-          setData(merged);
-          setIsCloudSynced(true);
-        }
-      }
-    } catch {}
   }, []);
 
-  // 1. Initial startup sync
+  // 1. Fetch latest data on initial application load
   useEffect(() => {
     fetchCloudPortfolioData(false);
   }, [fetchCloudPortfolioData]);
@@ -177,7 +121,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     window.addEventListener('focus', handleFocusOrVisible);
     document.addEventListener('visibilitychange', handleFocusOrVisible);
 
-    // Periodic background sync every 45 seconds to keep devices in sync
+    // Periodic polling every 45 seconds to keep any open device tabs synchronized
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         fetchCloudPortfolioData(true);
@@ -194,6 +138,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Admin Auth State (session-scoped for security)
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(() => {
     try {
+      localStorage.removeItem('vedant_portfolio_cache_v3');
       localStorage.removeItem(ADMIN_AUTH_KEY);
       return sessionStorage.getItem(ADMIN_AUTH_KEY) === 'true';
     } catch {
@@ -214,7 +159,6 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const handleClose = () => {
       sessionStorage.removeItem(ADMIN_AUTH_KEY);
       sessionStorage.removeItem(ADMIN_PASS_KEY);
-      localStorage.removeItem(ADMIN_AUTH_KEY);
     };
     window.addEventListener('beforeunload', handleClose);
     window.addEventListener('pagehide', handleClose);
@@ -225,14 +169,15 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   /**
-   * Sync portfolio data to Cloud Database
+   * Sync portfolio data to Cloud Database via POST /api/portfolio
+   * Waits for database confirmation before updating state.
    */
   const syncToCloud = async (overrideData?: PortfolioData): Promise<boolean> => {
     const payload = overrideData || dataRef.current;
     const sessionPass = sessionStorage.getItem(ADMIN_PASS_KEY) || '';
 
     try {
-      let res = await fetch('/api/portfolio', {
+      const res = await fetch('/api/portfolio', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -241,26 +186,81 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         body: JSON.stringify({ data: payload, password: sessionPass }),
       });
 
-      if (!res.ok && res.status === 404) {
-        res = await fetch('/api/portfolio/data', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Admin-Password': sessionPass,
-          },
-          body: JSON.stringify({ data: payload, password: sessionPass }),
-        });
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.data) {
+          const confirmed: PortfolioData = {
+            ...DEFAULT_PORTFOLIO_DATA,
+            ...json.data,
+            personalInfo: {
+              ...DEFAULT_PORTFOLIO_DATA.personalInfo,
+              ...(json.data.personalInfo || {}),
+            },
+          };
+          setData(confirmed);
+        }
+        setIsCloudSynced(true);
+        return true;
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        console.error('Database write error response:', errJson);
       }
+    } catch (e) {
+      console.error('Failed to persist portfolio customizations to database:', e);
+    }
+    return false;
+  };
+
+  /**
+   * Update Portfolio Data:
+   * Sends update to POST /api/portfolio, waits for database persistence, and updates state.
+   */
+  const updatePortfolioData = async (newData: Partial<PortfolioData>): Promise<boolean> => {
+    const current = dataRef.current;
+    const merged: PortfolioData = {
+      ...current,
+      ...newData,
+      personalInfo: {
+        ...current.personalInfo,
+        ...(newData.personalInfo || {}),
+      },
+    };
+
+    // Optimistically update React state
+    setData(merged);
+
+    // Persist to Cloud Database and update with server response
+    const success = await syncToCloud(merged);
+    return success;
+  };
+
+  /**
+   * Reset Portfolio to Verified Defaults
+   */
+  const resetToDefaults = async (): Promise<boolean> => {
+    setData(DEFAULT_PORTFOLIO_DATA);
+    const sessionPass = sessionStorage.getItem(ADMIN_PASS_KEY) || '';
+
+    try {
+      const res = await fetch('/api/portfolio', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Password': sessionPass,
+        },
+        body: JSON.stringify({ action: 'reset', password: sessionPass }),
+      });
 
       if (res.ok) {
+        const json = await res.json();
+        if (json && json.data) {
+          setData(json.data);
+        }
         setIsCloudSynced(true);
-        try {
-          localStorage.setItem(STORAGE_CACHE_KEY, JSON.stringify(payload));
-        } catch {}
         return true;
       }
     } catch (e) {
-      console.error('Failed to sync portfolio customizations to cloud database:', e);
+      console.error('Reset error:', e);
     }
     return false;
   };
@@ -320,7 +320,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       }
 
-      // Static fallback if serverless is offline
+      // If password meets minimum length during offline/dev mode
       if (password && password.length >= 4) {
         setIsAdminLoggedIn(true);
         setAdminEmail('vedantbhagat108@gmail.com');
@@ -394,45 +394,6 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setAdminEmail(null);
     sessionStorage.removeItem(ADMIN_AUTH_KEY);
     sessionStorage.removeItem(ADMIN_PASS_KEY);
-  };
-
-  /**
-   * Update Portfolio Data with Optimistic State + Cloud Sync
-   */
-  const updatePortfolioData = (newData: Partial<PortfolioData>) => {
-    setData((prev) => {
-      const updated = {
-        ...prev,
-        ...newData,
-        personalInfo: {
-          ...prev.personalInfo,
-          ...(newData.personalInfo || {}),
-        },
-      };
-      // Persist to Cloud Database immediately
-      syncToCloud(updated);
-      return updated;
-    });
-  };
-
-  /**
-   * Reset Portfolio to Verified Defaults
-   */
-  const resetToDefaults = () => {
-    setData(DEFAULT_PORTFOLIO_DATA);
-    try {
-      localStorage.removeItem(STORAGE_CACHE_KEY);
-    } catch {}
-    const sessionPass = sessionStorage.getItem(ADMIN_PASS_KEY) || '';
-    fetch('/api/portfolio/reset', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Admin-Password': sessionPass,
-      },
-      body: JSON.stringify({ action: 'reset', password: sessionPass }),
-    }).catch(() => {});
-    syncToCloud(DEFAULT_PORTFOLIO_DATA);
   };
 
   return (
