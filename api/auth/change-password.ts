@@ -1,4 +1,4 @@
-import { changeOwnerPassword } from '../server/db.js';
+import { changeOwnerPassword } from '../../server/db.js';
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
