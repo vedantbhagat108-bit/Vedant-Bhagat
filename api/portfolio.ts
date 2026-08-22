@@ -2,6 +2,7 @@ import {
   getPortfolioData,
   savePortfolioData,
   resetPortfolioData,
+  verifyOwnerPassword,
   PortfolioDatabaseSchema,
 } from '../server/db.js';
 
@@ -44,35 +45,19 @@ export default async function handler(req: any, res: any) {
   }
 
   // 2. Helper to verify owner authorization for write operations
-  const verifyOwnerAuthorization = (req: any): boolean => {
-    const configuredOwnerPassword = process.env.OWNER_PASSWORD || process.env.ADMIN_PASSWORD;
-
-    // In production, OWNER_PASSWORD must be defined
-    if (!configuredOwnerPassword) {
-      return false;
-    }
-
+  const verifyOwnerAuthorization = async (req: any): Promise<boolean> => {
     const clientPassword =
       req.body?.password ||
       req.headers['x-admin-password'] ||
       (req.headers['authorization'] ? req.headers['authorization'].replace('Bearer ', '').trim() : '');
 
-    return clientPassword === configuredOwnerPassword;
+    if (!clientPassword) return false;
+    return verifyOwnerPassword(clientPassword);
   };
 
   // 3. POST / PUT / PATCH: Save portfolio data or reset
   if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
-    const configuredOwnerPassword = process.env.OWNER_PASSWORD || process.env.ADMIN_PASSWORD;
-
-    // Secure authentication check
-    if (!configuredOwnerPassword) {
-      return res.status(500).json({
-        success: false,
-        message: 'Server Configuration Error: OWNER_PASSWORD environment variable is not configured on the server.',
-      });
-    }
-
-    if (!verifyOwnerAuthorization(req)) {
+    if (!(await verifyOwnerAuthorization(req))) {
       return res.status(401).json({
         success: false,
         message: 'Unauthorized: Valid owner password is required to modify portfolio data.',
@@ -131,16 +116,7 @@ export default async function handler(req: any, res: any) {
 
   // 4. DELETE: Reset database to defaults
   if (req.method === 'DELETE') {
-    const configuredOwnerPassword = process.env.OWNER_PASSWORD || process.env.ADMIN_PASSWORD;
-
-    if (!configuredOwnerPassword) {
-      return res.status(500).json({
-        success: false,
-        message: 'Server Configuration Error: OWNER_PASSWORD environment variable is not configured on the server.',
-      });
-    }
-
-    if (!verifyOwnerAuthorization(req)) {
+    if (!(await verifyOwnerAuthorization(req))) {
       return res.status(401).json({
         success: false,
         message: 'Unauthorized: Valid owner password is required.',

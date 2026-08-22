@@ -1,3 +1,5 @@
+import { changeOwnerPassword } from '../server/db.js';
+
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -16,24 +18,22 @@ export default async function handler(req: any, res: any) {
   }
 
   const { currentPassword, newPassword } = req.body || {};
-  const expectedPass = process.env.OWNER_PASSWORD || process.env.ADMIN_PASSWORD;
 
-  if (expectedPass && (!currentPassword || currentPassword !== expectedPass)) {
+  if (!currentPassword || !newPassword) {
     return res.status(400).json({
       success: false,
-      message: 'Current password does not match.',
+      message: 'Both currentPassword and newPassword are required.',
     });
   }
 
-  if (!newPassword || newPassword.length < 4) {
-    return res.status(400).json({
+  try {
+    const result = await changeOwnerPassword(currentPassword, newPassword);
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (err: any) {
+    console.error('Error changing owner password:', err);
+    return res.status(500).json({
       success: false,
-      message: 'New password must be at least 4 characters long.',
+      message: err.message || 'Failed to change password.',
     });
   }
-
-  return res.status(200).json({
-    success: true,
-    message: 'Owner password updated successfully!',
-  });
 }
