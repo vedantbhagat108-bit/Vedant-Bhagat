@@ -134,12 +134,48 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
   const [videoInputMode, setVideoInputMode] = useState<'local' | 'url' | 'blob'>('local');
   const [serverVideo, setServerVideo] = useState<{ exists: boolean; url: string | null; size?: number } | null>(null);
   const [isServerUploading, setIsServerUploading] = useState<boolean>(false);
+  const [serverUploadProgress, setServerUploadProgress] = useState<{ percent: number; loaded: number; total: number } | null>(null);
+  const serverUploadAbortControllerRef = React.useRef<AbortController | null>(null);
+
   const [vercelBlobVideo, setVercelBlobVideo] = useState<VercelBlobVideoInfo | null>(null);
-  const [blobUploadProgress, setBlobUploadProgress] = useState<number | null>(null);
+  const [blobUploadProgress, setBlobUploadProgress] = useState<{ percent: number; loaded?: number; total?: number } | null>(null);
   const [isBlobUploading, setIsBlobUploading] = useState<boolean>(false);
+  const blobUploadAbortControllerRef = React.useRef<AbortController | null>(null);
   const [blobStatus, setBlobStatus] = useState<{ configured: boolean; message?: string } | null>(null);
   const [activeResolvedVideo, setActiveResolvedVideo] = useState<string | null>(null);
   const [isVideoDisabled, setIsVideoDisabled] = useState<boolean>(false);
+
+  const handleCancelServerUpload = () => {
+    playClickSound(600);
+    if (serverUploadAbortControllerRef.current) {
+      serverUploadAbortControllerRef.current.abort();
+      serverUploadAbortControllerRef.current = null;
+    }
+    setIsServerUploading(false);
+    setServerUploadProgress(null);
+    const fileInput = document.getElementById('admin-server-video-input') as HTMLInputElement | null;
+    if (fileInput) fileInput.value = '';
+    setAuthMsg({
+      type: 'info',
+      text: 'Video upload cancelled. No video was saved or uploaded.',
+    });
+  };
+
+  const handleCancelBlobUpload = () => {
+    playClickSound(600);
+    if (blobUploadAbortControllerRef.current) {
+      blobUploadAbortControllerRef.current.abort();
+      blobUploadAbortControllerRef.current = null;
+    }
+    setIsBlobUploading(false);
+    setBlobUploadProgress(null);
+    const fileInput = document.getElementById('admin-blob-video-input') as HTMLInputElement | null;
+    if (fileInput) fileInput.value = '';
+    setAuthMsg({
+      type: 'info',
+      text: 'Cloud upload cancelled. No video was saved to Vercel Blob.',
+    });
+  };
 
   // Load existing saved video info on tab switch or open
   React.useEffect(() => {
@@ -1404,14 +1440,28 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                             id="admin-server-video-input"
                             accept="video/mp4,video/webm,video/ogg,video/quicktime"
                             className="hidden"
+                            disabled={isServerUploading}
                             onChange={async (e) => {
                               if (e.target.files && e.target.files[0]) {
                                 const file = e.target.files[0];
                                 playClickSound(800);
                                 setIsServerUploading(true);
+                                setServerUploadProgress({ percent: 0, loaded: 0, total: file.size });
+
+                                const controller = new AbortController();
+                                serverUploadAbortControllerRef.current = controller;
 
                                 try {
-                                  await uploadDirectServerVideo(file);
+                                  await uploadDirectServerVideo(
+                                    file,
+                                    (progress) => {
+                                      setServerUploadProgress(progress);
+                                    },
+                                    controller.signal
+                                  );
+
+                                  if (controller.signal.aborted) return;
+
                                   const srv = await getCurrentServerVideo();
                                   setServerVideo(srv);
                                   setVideoDisabledPreference(false);
@@ -1434,19 +1484,30 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                                     text: `Success! Video uploaded and saved in database as /hero-video.mp4. Synced across all devices!`,
                                   });
                                 } catch (err: any) {
-                                  console.error('Server video upload error:', err);
-                                  setAuthMsg({
-                                    type: 'error',
-                                    text: err.message || 'Failed to upload video to database.',
-                                  });
+                                  if (err?.name === 'AbortError' || controller.signal.aborted) {
+                                    console.log('Server video upload aborted by user');
+                                    setAuthMsg({
+                                      type: 'info',
+                                      text: 'Video upload cancelled. No video was saved.',
+                                    });
+                                  } else {
+                                    console.error('Server video upload error:', err);
+                                    setAuthMsg({
+                                      type: 'error',
+                                      text: err.message || 'Failed to upload video to database.',
+                                    });
+                                  }
                                 } finally {
                                   setIsServerUploading(false);
+                                  setServerUploadProgress(null);
+                                  serverUploadAbortControllerRef.current = null;
+                                  if (e.target) e.target.value = '';
                                 }
                               }
                             }}
                           />
 
-                          {serverVideo?.exists ? (
+                          {serverVideo?.exists && !isServerUploading ? (
                             <div className="w-full space-y-3">
                               <div className="relative w-full max-h-56 rounded-xl overflow-hidden border border-slate-800 bg-black flex items-center justify-center">
                                 <video
@@ -1472,16 +1533,67 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                               </div>
                             </div>
                           ) : isServerUploading ? (
-                            <div className="w-full max-w-md space-y-3 py-4">
-                              <div className="w-12 h-12 mx-auto rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 animate-pulse">
-                                <Zap className="w-6 h-6 animate-bounce" />
+                            <div className="w-full max-w-md space-y-4 py-3 px-2">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3 text-left">
+                                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+                                    <Zap className="w-5 h-5 animate-pulse" />
+                                  </div>
+                                  <div>
+                                    <div className="text-xs font-mono text-emerald-300 font-bold flex items-center gap-2">
+                                      <span>Uploading Video File</span>
+                                      <span className="text-emerald-400 font-extrabold">{serverUploadProgress?.percent ?? 0}%</span>
+                                    </div>
+                                    <p className="text-[11px] font-mono text-slate-400">
+                                      {serverUploadProgress?.total ? (
+                                        <span>
+                                          {((serverUploadProgress.loaded || 0) / (1024 * 1024)).toFixed(1)} MB / {((serverUploadProgress.total || 0) / (1024 * 1024)).toFixed(1)} MB
+                                        </span>
+                                      ) : (
+                                        'Streaming file to database...'
+                                      )}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={handleCancelServerUpload}
+                                  className="px-3 py-1.5 bg-rose-950/70 hover:bg-rose-900 border border-rose-500/50 hover:border-rose-400 text-rose-200 text-xs font-mono rounded-xl transition-all flex items-center gap-1.5 shadow-lg shadow-rose-950/60 cursor-pointer shrink-0"
+                                  title="Cancel video upload"
+                                >
+                                  <X className="w-3.5 h-3.5 text-rose-300" />
+                                  <span className="font-bold">Cancel</span>
+                                </button>
                               </div>
-                              <div className="text-xs font-mono text-emerald-300 font-semibold">
-                                Uploading and saving video to backend database...
+
+                              {/* Glowing Animated Progress Bar */}
+                              <div className="space-y-1.5">
+                                <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-emerald-500/30 p-0.5 relative">
+                                  <div
+                                    className="bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-300 h-full rounded-full transition-all duration-200 ease-out shadow-[0_0_12px_rgba(16,185,129,0.7)]"
+                                    style={{ width: `${Math.max(3, serverUploadProgress?.percent ?? 0)}%` }}
+                                  />
+                                </div>
+                                <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                                    <span>Writing directly to database storage...</span>
+                                  </span>
+                                  <span className="text-emerald-400 font-semibold">{serverUploadProgress?.percent ?? 0}% completed</span>
+                                </div>
                               </div>
-                              <p className="text-[11px] text-slate-400">
-                                Streaming and writing directly to server storage for global cross-device access...
-                              </p>
+
+                              <div className="pt-1 flex items-center justify-center">
+                                <button
+                                  type="button"
+                                  onClick={handleCancelServerUpload}
+                                  className="text-[11px] font-mono text-rose-400 hover:text-rose-300 hover:underline flex items-center gap-1 transition-colors cursor-pointer"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  <span>Cancel upload and remove video</span>
+                                </button>
+                              </div>
                             </div>
                           ) : (
                             <>
@@ -1729,17 +1841,27 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                             id="admin-blob-video-input"
                             accept="video/mp4,video/webm,video/ogg,video/quicktime"
                             className="hidden"
+                            disabled={isBlobUploading}
                             onChange={async (e) => {
                               if (e.target.files && e.target.files[0]) {
                                 const file = e.target.files[0];
                                 playClickSound(800);
                                 setIsBlobUploading(true);
-                                setBlobUploadProgress(0);
+                                setBlobUploadProgress({ percent: 0, loaded: 0, total: file.size });
+
+                                const controller = new AbortController();
+                                blobUploadAbortControllerRef.current = controller;
 
                                 try {
-                                  const result = await uploadVideoToVercelBlob(file, (percent) => {
-                                    setBlobUploadProgress(percent);
-                                  });
+                                  const result = await uploadVideoToVercelBlob(
+                                    file,
+                                    (progress) => {
+                                      setBlobUploadProgress(progress);
+                                    },
+                                    controller.signal
+                                  );
+
+                                  if (controller.signal.aborted) return;
 
                                   setVercelBlobVideo({
                                     url: result.url,
@@ -1763,20 +1885,30 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                                     text: `Success! Video uploaded to Vercel Blob and saved to Postgres database.`,
                                   });
                                 } catch (err: any) {
-                                  console.error('Blob upload error:', err);
-                                  setAuthMsg({
-                                    type: 'error',
-                                    text: err.message || 'Failed to upload to Vercel Blob. Please ensure BLOB_READ_WRITE_TOKEN is connected.',
-                                  });
+                                  if (err?.name === 'AbortError' || controller.signal.aborted) {
+                                    console.log('Blob upload cancelled by user');
+                                    setAuthMsg({
+                                      type: 'info',
+                                      text: 'Cloud upload cancelled. No video was saved to Vercel Blob.',
+                                    });
+                                  } else {
+                                    console.error('Blob upload error:', err);
+                                    setAuthMsg({
+                                      type: 'error',
+                                      text: err.message || 'Failed to upload to Vercel Blob. Please ensure BLOB_READ_WRITE_TOKEN is connected.',
+                                    });
+                                  }
                                 } finally {
                                   setIsBlobUploading(false);
                                   setBlobUploadProgress(null);
+                                  blobUploadAbortControllerRef.current = null;
+                                  if (e.target) e.target.value = '';
                                 }
                               }
                             }}
                           />
 
-                          {vercelBlobVideo?.url ? (
+                          {vercelBlobVideo?.url && !isBlobUploading ? (
                             <div className="w-full space-y-3">
                               <div className="relative w-full max-h-56 rounded-xl overflow-hidden border border-slate-800 bg-black flex items-center justify-center">
                                 <video
@@ -1802,22 +1934,67 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
                               </div>
                             </div>
                           ) : isBlobUploading ? (
-                            <div className="w-full max-w-md space-y-3 py-4">
-                              <div className="w-12 h-12 mx-auto rounded-2xl bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-sky-400 animate-pulse">
-                                <CloudUpload className="w-6 h-6 animate-bounce" />
+                            <div className="w-full max-w-md space-y-4 py-3 px-2">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3 text-left">
+                                  <div className="w-10 h-10 rounded-xl bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-sky-400 shrink-0">
+                                    <CloudUpload className="w-5 h-5 animate-bounce" />
+                                  </div>
+                                  <div>
+                                    <div className="text-xs font-mono text-sky-300 font-bold flex items-center gap-2">
+                                      <span>Uploading to Vercel Blob</span>
+                                      <span className="text-sky-400 font-extrabold">{blobUploadProgress?.percent ?? 0}%</span>
+                                    </div>
+                                    <p className="text-[11px] font-mono text-slate-400">
+                                      {blobUploadProgress?.total ? (
+                                        <span>
+                                          {((blobUploadProgress.loaded || 0) / (1024 * 1024)).toFixed(1)} MB / {((blobUploadProgress.total || 0) / (1024 * 1024)).toFixed(1)} MB
+                                        </span>
+                                      ) : (
+                                        'Streaming file to Vercel CDN...'
+                                      )}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={handleCancelBlobUpload}
+                                  className="px-3 py-1.5 bg-rose-950/70 hover:bg-rose-900 border border-rose-500/50 hover:border-rose-400 text-rose-200 text-xs font-mono rounded-xl transition-all flex items-center gap-1.5 shadow-lg shadow-rose-950/60 cursor-pointer shrink-0"
+                                  title="Cancel cloud upload"
+                                >
+                                  <X className="w-3.5 h-3.5 text-rose-300" />
+                                  <span className="font-bold">Cancel</span>
+                                </button>
                               </div>
-                              <div className="text-xs font-mono text-sky-300 font-semibold">
-                                Uploading to Vercel Blob Storage... {blobUploadProgress !== null ? `${blobUploadProgress}%` : ''}
+
+                              {/* Glowing Animated Progress Bar */}
+                              <div className="space-y-1.5">
+                                <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-sky-500/30 p-0.5 relative">
+                                  <div
+                                    className="bg-gradient-to-r from-sky-500 via-cyan-400 to-sky-300 h-full rounded-full transition-all duration-200 ease-out shadow-[0_0_12px_rgba(14,165,233,0.7)]"
+                                    style={{ width: `${Math.max(3, blobUploadProgress?.percent ?? 0)}%` }}
+                                  />
+                                </div>
+                                <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-ping" />
+                                    <span>Syncing to global cloud storage...</span>
+                                  </span>
+                                  <span className="text-sky-400 font-semibold">{blobUploadProgress?.percent ?? 0}% completed</span>
+                                </div>
                               </div>
-                              <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden border border-slate-800">
-                                <div
-                                  className="bg-sky-500 h-2.5 rounded-full transition-all duration-300 ease-out shadow-lg shadow-sky-500/50"
-                                  style={{ width: `${blobUploadProgress ?? 10}%` }}
-                                />
+
+                              <div className="pt-1 flex items-center justify-center">
+                                <button
+                                  type="button"
+                                  onClick={handleCancelBlobUpload}
+                                  className="text-[11px] font-mono text-rose-400 hover:text-rose-300 hover:underline flex items-center gap-1 transition-colors cursor-pointer"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  <span>Cancel upload and remove video</span>
+                                </button>
                               </div>
-                              <p className="text-[11px] text-slate-400">
-                                Streaming file directly to Vercel global CDN...
-                              </p>
                             </div>
                           ) : (
                             <>

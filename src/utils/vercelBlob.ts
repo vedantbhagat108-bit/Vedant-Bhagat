@@ -43,14 +43,25 @@ export async function getActiveVercelBlobVideo(): Promise<VercelBlobVideoInfo | 
   }
 }
 
+export interface BlobUploadProgressEvent {
+  percent: number;
+  loaded?: number;
+  total?: number;
+}
+
 /**
  * Upload a video file directly to Vercel Blob
  * Uses client-side direct streaming or server-side upload with fallback
  */
 export async function uploadVideoToVercelBlob(
   file: File,
-  onProgress?: (percent: number) => void
+  onProgress?: (progress: BlobUploadProgressEvent) => void,
+  signal?: AbortSignal
 ): Promise<{ url: string; pathname: string }> {
+  if (signal?.aborted) {
+    throw new DOMException('Upload aborted by user', 'AbortError');
+  }
+
   const sanitizedName = `hero-intro-${Date.now()}.${file.name.split('.').pop() || 'mp4'}`;
 
   // Try direct client upload via @vercel/blob/client
@@ -58,41 +69,87 @@ export async function uploadVideoToVercelBlob(
     const blob = await upload(`hero-videos/${sanitizedName}`, file, {
       access: 'public',
       handleUploadUrl: '/api/blob-upload',
+      abortSignal: signal,
       onUploadProgress: (progress) => {
         if (onProgress) {
-          onProgress(Math.round(progress.percentage));
+          onProgress({
+            percent: Math.min(100, Math.round(progress.percentage)),
+            loaded: progress.loaded,
+            total: progress.total,
+          });
         }
       },
     });
+
+    if (signal?.aborted) {
+      throw new DOMException('Upload aborted by user', 'AbortError');
+    }
 
     // Notify backend to register this as the active hero video
     await fetch('/api/blob/set-active', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: blob.url, pathname: blob.pathname, size: file.size }),
+      signal,
     }).catch(() => {});
 
     return { url: blob.url, pathname: blob.pathname };
-  } catch (clientErr) {
+  } catch (clientErr: any) {
+    if (signal?.aborted || clientErr?.name === 'AbortError') {
+      throw new DOMException('Upload cancelled by user', 'AbortError');
+    }
     console.warn('Client upload failed, attempting direct server API upload...', clientErr);
 
-    // Fallback: Send to server endpoint
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('filename', sanitizedName);
+    // Fallback: Send to server endpoint using XMLHttpRequest with progress and abort signal
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('filename', sanitizedName);
 
-    const res = await fetch('/api/blob/direct-upload', {
-      method: 'POST',
-      body: formData,
+      xhr.open('POST', '/api/blob/direct-upload', true);
+
+      if (signal) {
+        signal.addEventListener('abort', () => {
+          xhr.abort();
+          reject(new DOMException('Upload cancelled', 'AbortError'));
+        });
+      }
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && onProgress) {
+          const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+          onProgress({
+            percent,
+            loaded: event.loaded,
+            total: event.total,
+          });
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            resolve({ url: data.url, pathname: data.pathname });
+          } catch {
+            reject(new Error('Invalid response from server'));
+          }
+        } else {
+          try {
+            const errJson = JSON.parse(xhr.responseText);
+            reject(new Error(errJson.error || errJson.message || 'Failed to upload video to Vercel Blob'));
+          } catch {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Network error during Vercel Blob upload'));
+      xhr.onabort = () => reject(new DOMException('Upload cancelled by user', 'AbortError'));
+
+      xhr.send(formData);
     });
-
-    if (!res.ok) {
-      const errJson = await res.json().catch(() => ({}));
-      throw new Error(errJson.error || errJson.message || 'Failed to upload video to Vercel Blob');
-    }
-
-    const data = await res.json();
-    return { url: data.url, pathname: data.pathname };
   }
 }
 

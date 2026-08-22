@@ -194,24 +194,77 @@ export async function detectProjectRepoVideo(): Promise<string | null> {
   return null;
 }
 
+export interface UploadProgressEvent {
+  percent: number;
+  loaded: number;
+  total: number;
+}
+
 /**
  * Direct Server-Side Video Storage Helpers (Syncs across all devices without requiring cloud tokens)
  */
-export async function uploadDirectServerVideo(file: File): Promise<{ success: boolean; url: string; message: string }> {
-  const formData = new FormData();
-  formData.append('video', file);
+export function uploadDirectServerVideo(
+  file: File,
+  onProgress?: (progress: UploadProgressEvent) => void,
+  signal?: AbortSignal
+): Promise<{ success: boolean; url: string; message: string }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+    formData.append('video', file);
 
-  const res = await fetch('/api/video/upload', {
-    method: 'POST',
-    body: formData,
+    xhr.open('POST', '/api/video/upload', true);
+
+    if (signal) {
+      if (signal.aborted) {
+        reject(new DOMException('Upload aborted by user', 'AbortError'));
+        return;
+      }
+      signal.addEventListener('abort', () => {
+        xhr.abort();
+        reject(new DOMException('Upload cancelled', 'AbortError'));
+      });
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+        onProgress({
+          percent,
+          loaded: event.loaded,
+          total: event.total,
+        });
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const res = JSON.parse(xhr.responseText);
+          resolve(res);
+        } catch {
+          resolve({ success: true, url: '/hero-video.mp4', message: 'Video uploaded' });
+        }
+      } else {
+        try {
+          const err = JSON.parse(xhr.responseText);
+          reject(new Error(err.message || `Upload failed with status ${xhr.status}`));
+        } catch {
+          reject(new Error(`Upload failed with status ${xhr.status}`));
+        }
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new Error('Network error during video upload'));
+    };
+
+    xhr.onabort = () => {
+      reject(new DOMException('Upload cancelled by user', 'AbortError'));
+    };
+
+    xhr.send(formData);
   });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || 'Server video upload failed');
-  }
-
-  return await res.json();
 }
 
 export async function getCurrentServerVideo(): Promise<{ exists: boolean; url: string | null; size?: number }> {
