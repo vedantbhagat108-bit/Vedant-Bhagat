@@ -1,4 +1,5 @@
 import { neon } from '@neondatabase/serverless';
+import crypto from 'node:crypto';
 
 export interface PortfolioDatabaseSchema {
   personalInfo: {
@@ -285,6 +286,94 @@ export function mergeWithDefault(incoming: Partial<PortfolioDatabaseSchema>): Po
     leetcodeSkillMetrics: incoming.leetcodeSkillMetrics || DEFAULT_DATABASE_STATE.leetcodeSkillMetrics,
     leetcodeSolvedCount: incoming.leetcodeSolvedCount || DEFAULT_DATABASE_STATE.leetcodeSolvedCount,
   };
+}
+
+/**
+ * Owner password: persisted (hashed) in Postgres once changed.
+ * Falls back to OWNER_PASSWORD/ADMIN_PASSWORD env var until a change is made.
+ */
+function hashPassword(password: string, existingSalt?: string): string {
+  const salt = existingSalt || crypto.randomBytes(16).toString('hex');
+  const derived = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${derived}`;
+}
+
+function verifyPasswordAgainstHash(candidate: string, stored: string): boolean {
+  const [salt, derivedHex] = stored.split(':');
+  if (!salt || !derivedHex) return false;
+  try {
+    const candidateHex = crypto.scryptSync(candidate, salt, 64).toString('hex');
+    return crypto.timingSafeEqual(Buffer.from(derivedHex, 'hex'), Buffer.from(candidateHex, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
+async function ensureSecretsTable(sql: any) {
+  await sql`
+    CREATE TABLE IF NOT EXISTS app_secrets (
+      id TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    );
+  `;
+}
+
+async function getStoredOwnerPasswordHash(): Promise<string | null> {
+  const sql = getPostgresClient();
+  if (!sql) return null;
+  try {
+    await ensureSecretsTable(sql);
+    const rows = await sql`SELECT value FROM app_secrets WHERE id = 'owner_password_hash' LIMIT 1;`;
+    return rows && rows.length > 0 ? rows[0].value : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function verifyOwnerPassword(candidate: string): Promise<boolean> {
+  if (!candidate) return false;
+
+  const storedHash = await getStoredOwnerPasswordHash();
+  if (storedHash) {
+    return verifyPasswordAgainstHash(candidate, storedHash);
+  }
+
+  const envPass = process.env.OWNER_PASSWORD || process.env.ADMIN_PASSWORD;
+  if (!envPass) return false;
+  return candidate === envPass;
+}
+
+export async function changeOwnerPassword(
+  currentPassword: string,
+  newPassword: string
+): Promise<{ success: boolean; message: string }> {
+  const isCurrentValid = await verifyOwnerPassword(currentPassword);
+  if (!isCurrentValid) {
+    return { success: false, message: 'Current password does not match.' };
+  }
+
+  if (!newPassword || newPassword.length < 4) {
+    return { success: false, message: 'New password must be at least 4 characters long.' };
+  }
+
+  const sql = getPostgresClient();
+  if (!sql) {
+    return {
+      success: false,
+      message: 'Database persistence failed: no database connection is configured on the server, so the new password cannot be saved.',
+    };
+  }
+
+  await ensureSecretsTable(sql);
+  const newHash = hashPassword(newPassword);
+  await sql`
+    INSERT INTO app_secrets (id, value, updated_at)
+    VALUES ('owner_password_hash', ${newHash}, NOW())
+    ON CONFLICT (id) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
+  `;
+
+  return { success: true, message: 'Owner password updated successfully and persisted across all devices!' };
 }
 
 let isTableInitialized = false;
